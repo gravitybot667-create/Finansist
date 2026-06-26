@@ -19,6 +19,27 @@ const formatKZT = (amount) => {
   }).format(amount || 0).replace('KZT', '₸');
 };
 
+const mapTender = (t) => ({
+  id: t.id,
+  productName: t.product_name,
+  lotNumber: t.nmck ? t.nmck.toString() : '',
+  buyPrice: t.buy_price,
+  buyQty: t.buy_qty,
+  buyTotal: t.buy_total,
+  sellPrice: t.sell_price,
+  sellQty: t.sell_qty,
+  sellTotal: t.sell_total,
+  totalExtra: t.extra_costs,
+  totalCosts: t.total_costs,
+  taxAmount: t.tax_amount,
+  netProfit: t.net_profit,
+  margin: t.margin,
+  roi: t.roi,
+  status: t.status,
+  signDate: t.sign_date,
+  date: t.sign_date
+});
+
 function App() {
   const [activeTab, setActiveTab] = useState('calc');
   const [showSettings, setShowSettings] = useState(false);
@@ -57,7 +78,7 @@ function App() {
               taxType: c.tax_type,
               monthlyGoal: c.monthly_goal,
               requisites: { bin: c.bin || '', bank: c.bank || '', iik: c.iik || '', bik: c.bik || '', address: c.address || '' },
-              tenders: await api.fetchTenders(c.id),
+              tenders: (await api.fetchTenders(c.id)).map(mapTender),
               treasuryTransactions: await api.fetchTransactions(c.id),
               reminders: []
             };
@@ -93,24 +114,45 @@ function App() {
 
   const handleCreateTender = async (tender) => {
     if (!company) return;
-    const dbTender = await api.createTender(company.id, tender);
-    
-    let updatedTx = [...company.treasuryTransactions];
-    if (['won', 'shipping'].includes(dbTender.status)) {
-      const txRes = await api.createTransaction(company.id, {
-        type: 'expense',
-        amount: dbTender.total_costs || dbTender.totalCosts,
-        description: `Закуп и расходы (Тендер: ${dbTender.product_name || dbTender.productName})`,
-        ref_tender_id: dbTender.id
-      });
-      updatedTx.unshift(txRes);
+    try {
+      const payload = {
+        product_name: tender.productName,
+        nmck: parseFloat(tender.lotNumber) || 0,
+        buy_price: tender.buyPrice,
+        buy_qty: tender.buyQty,
+        buy_total: tender.buyTotal,
+        sell_price: tender.sellPrice,
+        sell_qty: tender.sellQty,
+        sell_total: tender.sellTotal,
+        extra_costs: tender.totalExtra,
+        total_costs: tender.totalCosts,
+        tax_system: company.taxType,
+        tax_amount: tender.taxAmount,
+        net_profit: tender.netProfit,
+        margin: tender.margin,
+        roi: tender.roi,
+        status: tender.status,
+        sign_date: tender.signDate || null
+      };
+
+      const dbTender = await api.createTender(company.id, payload);
+      
+      let updatedTx = [...company.treasuryTransactions];
+      if (['won', 'shipping'].includes(dbTender.status)) {
+        const txRes = await api.createTransaction(company.id, {
+          type: 'expense',
+          amount: dbTender.total_costs || payload.total_costs,
+          description: `Закуп и расходы (Тендер: ${dbTender.product_name || payload.product_name})`,
+          ref_tender_id: dbTender.id
+        });
+        updatedTx.unshift(txRes);
+      }
+      
+      const t = mapTender(dbTender);
+      updateCompany({ tenders: [t, ...company.tenders], treasuryTransactions: updatedTx });
+    } catch (e) {
+      alert("Ошибка при сохранении тендера: " + e.message);
     }
-    
-    // Convert backend keys to frontend keys for immediate render
-    const t = { ...dbTender, productName: dbTender.product_name, sellTotal: dbTender.sell_total, buyTotal: dbTender.buy_total, netProfit: dbTender.net_profit };
-    
-    updateCompany({ tenders: [t, ...company.tenders], treasuryTransactions: updatedTx });
-    alert("Тендер сохранен!");
   };
 
   const handleUpdateTenderStatus = async (tenderId, newStatus) => {

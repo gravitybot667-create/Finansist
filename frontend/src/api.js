@@ -13,6 +13,7 @@ const getHeaders = () => {
 
 export const fetchCompanies = async () => {
   const res = await fetch(`${BASE_URL}/companies`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
@@ -31,11 +32,13 @@ export const createCompany = async (companyData) => {
 
 export const fetchTenders = async (companyId) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/tenders`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
 export const fetchTransactions = async (companyId) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/transactions`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
@@ -45,6 +48,7 @@ export const createTender = async (companyId, tenderData) => {
     headers: getHeaders(),
     body: JSON.stringify(tenderData)
   });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
@@ -53,6 +57,7 @@ export const updateTenderStatus = async (companyId, tenderId, status) => {
     method: 'PUT',
     headers: getHeaders()
   });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
@@ -62,15 +67,18 @@ export const createTransaction = async (companyId, txData) => {
     headers: getHeaders(),
     body: JSON.stringify(txData)
   });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
 export const getInviteLink = async (companyId) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/invite`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
 
 export const getCompanyMembers = async (companyId) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/members`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
