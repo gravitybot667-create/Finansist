@@ -114,26 +114,35 @@ def get_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
         })
     return res
 
+import traceback
+from fastapi.responses import JSONResponse
+
 class CompanyCreate(BaseModel):
     name: str
     tax_type: str
 
-@app.post("/api/companies", response_model=CompanyResponse)
+@app.post("/api/companies")
 def create_company(company: CompanyCreate, user: User = Depends(get_current_user), db=Depends(get_db)):
-    db_company = Company(name=company.name, tax_type=company.tax_type, owner_id=user.id)
-    db.add(db_company)
-    db.commit()
-    db.refresh(db_company)
-    
-    db_member = CompanyMember(company_id=db_company.id, user_id=user.id, role="owner")
-    db.add(db_member)
-    db.commit()
-    
-    return {
-        "id": db_company.id, "name": db_company.name, "tax_type": db_company.tax_type,
-        "monthly_goal": db_company.monthly_goal, "bin": db_company.bin, "bank": db_company.bank,
-        "iik": db_company.iik, "bik": db_company.bik, "address": db_company.address, "role": "owner"
-    }
+    try:
+        db_company = Company(name=company.name, tax_type=company.tax_type, owner_id=user.id)
+        # Ensure default values are populated before commit if needed
+        db_company.monthly_goal = 20000000.0
+        db.add(db_company)
+        db.commit()
+        db.refresh(db_company)
+        
+        db_member = CompanyMember(company_id=db_company.id, user_id=user.id, role="owner")
+        db.add(db_member)
+        db.commit()
+        
+        return {
+            "id": db_company.id, "name": db_company.name, "tax_type": db_company.tax_type,
+            "monthly_goal": db_company.monthly_goal, "bin": db_company.bin, "bank": db_company.bank,
+            "iik": db_company.iik, "bik": db_company.bik, "address": db_company.address, "role": "owner"
+        }
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=400, content=f"DB Error: {str(e)}\n{traceback.format_exc()}")
 
 @app.get("/api/companies/{company_id}/invite")
 def get_invite_link(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
