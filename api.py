@@ -180,6 +180,7 @@ class TenderCreate(BaseModel):
     roi: float
     status: str
     sign_date: Optional[str] = None
+    expenses_detail: Optional[list] = []
 
 @app.post("/api/companies/{company_id}/tenders")
 def create_tender(company_id: int, tender: TenderCreate, user: User = Depends(get_current_user), db=Depends(get_db)):

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Float, ForeignKey, DateTime, Boolean
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Float, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
@@ -74,6 +74,7 @@ class Tender(Base):
     roi = Column(Float)
     status = Column(String, default="draft")
     sign_date = Column(String, nullable=True)
+    expenses_detail = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Transaction(Base):
@@ -108,6 +109,10 @@ def init_db():
                 conn.execute(text("ALTER TABLE users ALTER COLUMN id TYPE BIGINT;"))
                 conn.execute(text("ALTER TABLE companies ALTER COLUMN owner_id TYPE BIGINT;"))
                 conn.execute(text("ALTER TABLE company_members ALTER COLUMN user_id TYPE BIGINT;"))
+                try:
+                    conn.execute(text("ALTER TABLE tenders ADD COLUMN expenses_detail JSON;"))
+                except Exception:
+                    pass # Column might already exist
                 conn.commit()
         except Exception as e:
             print("DB Alter failed or already bigints:", e)
