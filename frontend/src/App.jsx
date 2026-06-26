@@ -29,6 +29,7 @@ function App() {
     activeCompanyId: null,
     companies: {}
   });
+  const [showCreateCompany, setShowCreateCompany] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -149,12 +150,33 @@ function App() {
 
   const currentBalance = company ? company.treasuryTransactions.reduce((acc, tx) => acc + (tx.type === 'income' ? tx.amount : -tx.amount), 0) : 0;
 
+  const handleCreateCompanySuccess = (newCompany) => {
+    setAppState(prev => ({
+      activeCompanyId: newCompany.id,
+      companies: {
+        ...prev.companies,
+        [newCompany.id]: {
+          id: newCompany.id,
+          name: newCompany.name,
+          role: newCompany.role,
+          taxType: newCompany.tax_type,
+          monthlyGoal: newCompany.monthly_goal,
+          requisites: { bin: newCompany.bin || '', bank: newCompany.bank || '', iik: newCompany.iik || '', bik: newCompany.bik || '', address: newCompany.address || '' },
+          tenders: [],
+          treasuryTransactions: [],
+          reminders: []
+        }
+      }
+    }));
+    setShowCreateCompany(false);
+  };
+
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>Загрузка данных с сервера...</div>;
   }
 
-  if (!company) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>У вас пока нет компаний.</div>;
+  if (!company || showCreateCompany) {
+    return <CreateCompanyScreen onSuccess={handleCreateCompanySuccess} onCancel={company ? () => setShowCreateCompany(false) : null} />;
   }
 
   return (
@@ -172,6 +194,7 @@ function App() {
             {Object.values(appState.companies).map(c => (
               <div key={c.id} className={`tab ${appState.activeCompanyId === c.id ? 'active' : ''}`} onClick={() => setAppState(p => ({...p, activeCompanyId: c.id}))}>{c.name}</div>
             ))}
+            <button className="tab" style={{ background: 'transparent', padding: '0 8px' }} onClick={() => setShowCreateCompany(true)}><Plus size={16} /></button>
           </div>
           <button onClick={() => setShowSettings(true)} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}><Settings size={20} /></button>
           <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}>
@@ -202,6 +225,70 @@ function App() {
     </div>
   );
 }
+
+// ========================
+// CREATE COMPANY SCREEN
+// ========================
+const CreateCompanyScreen = ({ onSuccess, onCancel }) => {
+  const [name, setName] = useState('');
+  const [taxType, setTaxType] = useState('ip4');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return alert("Введите название компании");
+    setIsSubmitting(true);
+    try {
+      const newComp = await api.createCompany({ name, tax_type: taxType });
+      onSuccess(newComp);
+    } catch (e) {
+      alert("Ошибка при создании компании");
+      console.error(e);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="app-container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100vh', padding: '20px' }}>
+      <div className="glass-panel" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+          <Building2 size={48} color="var(--primary-color)" />
+        </div>
+        <h2 style={{ textAlign: 'center', marginBottom: '24px', fontSize: '20px' }}>Создание компании</h2>
+        
+        <div className="input-group" style={{ marginBottom: '16px' }}>
+          <label>Название (ИП / ТОО)</label>
+          <input 
+            type="text" 
+            className="input-field" 
+            placeholder="Например: ИП 'Моя компания'" 
+            value={name} 
+            onChange={e => setName(e.target.value)} 
+          />
+        </div>
+
+        <div className="input-group" style={{ marginBottom: '24px' }}>
+          <label>Тип компании (налоги)</label>
+          <select className="input-field" value={taxType} onChange={e => setTaxType(e.target.value)}>
+            <option value="ip4">ИП (Упрощенка)</option>
+            <option value="ip6">ИП (ОСНО)</option>
+            <option value="too3">ТОО (Упрощенка)</option>
+            <option value="too20">ТОО (ОСНО с НДС)</option>
+          </select>
+        </div>
+
+        <button className="btn-primary" style={{ width: '100%', marginBottom: '12px' }} onClick={handleSubmit} disabled={isSubmitting}>
+          {isSubmitting ? "Создание..." : "Создать и войти"}
+        </button>
+        {onCancel && (
+          <button className="btn-secondary" style={{ width: '100%' }} onClick={onCancel} disabled={isSubmitting}>
+            Отмена
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ========================
 // SETTINGS MODAL

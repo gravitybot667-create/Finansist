@@ -103,16 +103,6 @@ class CompanyResponse(BaseModel):
 @app.get("/api/companies", response_model=List[CompanyResponse])
 def get_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
     members = db.query(CompanyMember).filter(CompanyMember.user_id == user.id).all()
-    if not members:
-        # Create default companies for new user
-        ip = Company(name="Моё ИП", owner_id=user.id, tax_type="ip4")
-        too = Company(name="Моё ТОО", owner_id=user.id, tax_type="too3")
-        db.add_all([ip, too])
-        db.commit()
-        db.add(CompanyMember(company_id=ip.id, user_id=user.id, role="owner"))
-        db.add(CompanyMember(company_id=too.id, user_id=user.id, role="owner"))
-        db.commit()
-        members = db.query(CompanyMember).filter(CompanyMember.user_id == user.id).all()
     
     res = []
     for m in members:
@@ -123,6 +113,27 @@ def get_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "iik": c.iik, "bik": c.bik, "address": c.address, "role": m.role
         })
     return res
+
+class CompanyCreate(BaseModel):
+    name: str
+    tax_type: str
+
+@app.post("/api/companies", response_model=CompanyResponse)
+def create_company(company: CompanyCreate, user: User = Depends(get_current_user), db=Depends(get_db)):
+    db_company = Company(name=company.name, tax_type=company.tax_type, owner_id=user.id)
+    db.add(db_company)
+    db.commit()
+    db.refresh(db_company)
+    
+    db_member = CompanyMember(company_id=db_company.id, user_id=user.id, role="owner")
+    db.add(db_member)
+    db.commit()
+    
+    return {
+        "id": db_company.id, "name": db_company.name, "tax_type": db_company.tax_type,
+        "monthly_goal": db_company.monthly_goal, "bin": db_company.bin, "bank": db_company.bank,
+        "iik": db_company.iik, "bik": db_company.bik, "address": db_company.address, "role": "owner"
+    }
 
 @app.get("/api/companies/{company_id}/invite")
 def get_invite_link(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):

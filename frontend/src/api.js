@@ -16,6 +16,15 @@ export const fetchCompanies = async () => {
   return res.json();
 };
 
+export const createCompany = async (companyData) => {
+  const res = await fetch(`${BASE_URL}/companies`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(companyData)
+  });
+  return res.json();
+};
+
 export const fetchTenders = async (companyId) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/tenders`, { headers: getHeaders() });
   return res.json();
