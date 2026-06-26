@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, Boolean
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Float, ForeignKey, DateTime, Boolean
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.sql import text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
@@ -21,7 +23,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     
-    id = Column(Integer, primary_key=True, index=True) # Telegram User ID
+    id = Column(BigInteger, primary_key=True, index=True) # Telegram User ID
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -31,7 +33,7 @@ class Company(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(BigInteger, ForeignKey("users.id"))
     tax_type = Column(String, default="ip4")
     monthly_goal = Column(Float, default=20000000)
     
@@ -47,7 +49,7 @@ class CompanyMember(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(BigInteger, ForeignKey("users.id"))
     role = Column(String, default="member") # owner, member
 
 class Tender(Base):
@@ -99,3 +101,13 @@ class Reminder(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Attempt to alter existing tables to use BIGINT for Telegram IDs if using PostgreSQL
+    if "postgres" in DATABASE_URL:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ALTER COLUMN id TYPE BIGINT;"))
+                conn.execute(text("ALTER TABLE companies ALTER COLUMN owner_id TYPE BIGINT;"))
+                conn.execute(text("ALTER TABLE company_members ALTER COLUMN user_id TYPE BIGINT;"))
+                conn.commit()
+        except Exception as e:
+            print("DB Alter failed or already bigints:", e)
