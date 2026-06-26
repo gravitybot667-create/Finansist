@@ -736,14 +736,32 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h3 style={{ fontSize: '16px', margin: 0 }}>История операций</h3>
       </div>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+        <div>
           <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Период с:</label>
-          <input type="date" className="input-field" style={{ padding: '6px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <input 
+            type={startDate ? "date" : "text"}
+            onFocus={(e) => e.target.type = "date"}
+            onBlur={(e) => { if (!e.target.value) e.target.type = "text" }}
+            placeholder="ДД.ММ.ГГГГ"
+            className="input-field" 
+            style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} 
+            value={startDate} 
+            onChange={e => setStartDate(e.target.value)} 
+          />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
           <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>По:</label>
-          <input type="date" className="input-field" style={{ padding: '6px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <input 
+            type={endDate ? "date" : "text"}
+            onFocus={(e) => e.target.type = "date"}
+            onBlur={(e) => { if (!e.target.value) e.target.type = "text" }}
+            placeholder="ДД.ММ.ГГГГ"
+            className="input-field" 
+            style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} 
+            value={endDate} 
+            onChange={e => setEndDate(e.target.value)} 
+          />
         </div>
       </div>
 
