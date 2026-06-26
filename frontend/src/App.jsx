@@ -19,6 +19,8 @@ const formatKZT = (amount) => {
   }).format(amount || 0).replace('KZT', '₸');
 };
 
+const formatKZTPDF = (num) => new Intl.NumberFormat('ru-RU', { style: 'decimal', maximumFractionDigits: 0 }).format(num || 0) + ' тг.';
+
 const mapTender = (t) => ({
   id: t.id,
   productName: t.product_name,
@@ -37,7 +39,8 @@ const mapTender = (t) => ({
   roi: t.roi,
   status: t.status,
   signDate: t.sign_date,
-  date: t.sign_date
+  date: t.sign_date,
+  expenses: t.expenses_detail || []
 });
 
 function App() {
@@ -50,7 +53,6 @@ function App() {
     activeCompanyId: null,
     companies: {}
   });
-  const [showCreateCompany, setShowCreateCompany] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -132,7 +134,8 @@ function App() {
         margin: tender.margin,
         roi: tender.roi,
         status: tender.status,
-        sign_date: tender.signDate || null
+        sign_date: tender.signDate || null,
+        expenses_detail: tender.expenses
       };
 
       const dbTender = await api.createTender(company.id, payload);
@@ -192,33 +195,12 @@ function App() {
 
   const currentBalance = company ? company.treasuryTransactions.reduce((acc, tx) => acc + (tx.type === 'income' ? tx.amount : -tx.amount), 0) : 0;
 
-  const handleCreateCompanySuccess = (newCompany) => {
-    setAppState(prev => ({
-      activeCompanyId: newCompany.id,
-      companies: {
-        ...prev.companies,
-        [newCompany.id]: {
-          id: newCompany.id,
-          name: newCompany.name,
-          role: newCompany.role,
-          taxType: newCompany.tax_type,
-          monthlyGoal: newCompany.monthly_goal,
-          requisites: { bin: newCompany.bin || '', bank: newCompany.bank || '', iik: newCompany.iik || '', bik: newCompany.bik || '', address: newCompany.address || '' },
-          tenders: [],
-          treasuryTransactions: [],
-          reminders: []
-        }
-      }
-    }));
-    setShowCreateCompany(false);
-  };
-
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>Загрузка данных с сервера...</div>;
   }
 
-  if (!company || showCreateCompany) {
-    return <CreateCompanyScreen onSuccess={handleCreateCompanySuccess} onCancel={company ? () => setShowCreateCompany(false) : null} />;
+  if (!company) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>У вас пока нет компаний.</div>;
   }
 
   return (
@@ -236,7 +218,6 @@ function App() {
             {Object.values(appState.companies).map(c => (
               <div key={c.id} className={`tab ${appState.activeCompanyId === c.id ? 'active' : ''}`} onClick={() => setAppState(p => ({...p, activeCompanyId: c.id}))}>{c.name}</div>
             ))}
-            <button className="tab" style={{ background: 'transparent', padding: '0 8px' }} onClick={() => setShowCreateCompany(true)}><Plus size={16} /></button>
           </div>
           <button onClick={() => setShowSettings(true)} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}><Settings size={20} /></button>
           <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}>
@@ -267,70 +248,6 @@ function App() {
     </div>
   );
 }
-
-// ========================
-// CREATE COMPANY SCREEN
-// ========================
-const CreateCompanyScreen = ({ onSuccess, onCancel }) => {
-  const [name, setName] = useState('');
-  const [taxType, setTaxType] = useState('ip4');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!name.trim()) return alert("Введите название компании");
-    setIsSubmitting(true);
-    try {
-      const newComp = await api.createCompany({ name, tax_type: taxType });
-      onSuccess(newComp);
-    } catch (e) {
-      alert(`Ошибка при создании компании: ${e.message}`);
-      console.error(e);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="app-container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100vh', padding: '20px' }}>
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-          <Building2 size={48} color="var(--primary-color)" />
-        </div>
-        <h2 style={{ textAlign: 'center', marginBottom: '24px', fontSize: '20px' }}>Создание компании</h2>
-        
-        <div className="input-group" style={{ marginBottom: '16px' }}>
-          <label>Название (ИП / ТОО)</label>
-          <input 
-            type="text" 
-            className="input-field" 
-            placeholder="Например: ИП 'Моя компания'" 
-            value={name} 
-            onChange={e => setName(e.target.value)} 
-          />
-        </div>
-
-        <div className="input-group" style={{ marginBottom: '24px' }}>
-          <label>Тип компании (налоги)</label>
-          <select className="input-field" value={taxType} onChange={e => setTaxType(e.target.value)}>
-            <option value="ip4">ИП (Упрощенка)</option>
-            <option value="ip6">ИП (ОСНО)</option>
-            <option value="too3">ТОО (Упрощенка)</option>
-            <option value="too20">ТОО (ОСНО с НДС)</option>
-          </select>
-        </div>
-
-        <button className="btn-primary" style={{ width: '100%', marginBottom: '12px' }} onClick={handleSubmit} disabled={isSubmitting}>
-          {isSubmitting ? "Создание..." : "Создать и войти"}
-        </button>
-        {onCancel && (
-          <button className="btn-secondary" style={{ width: '100%' }} onClick={onCancel} disabled={isSubmitting}>
-            Отмена
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
 
 // ========================
 // SETTINGS MODAL
@@ -571,9 +488,26 @@ const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
               <option value="lost">Проигран (Отмена)</option>
             </select>
           </div>
-          <div className="result-row"><span>Выручка:</span><span>{formatKZT(selectedItem.sellTotal)}</span></div>
-          <div className="result-row"><span>Полная себестоимость:</span><span>{formatKZT(selectedItem.totalCosts + selectedItem.taxAmount)}</span></div>
-          <div className="result-row total"><span>Чистая прибыль:</span><span style={{ color: 'var(--success-color)'}}>{formatKZT(selectedItem.netProfit)}</span></div>
+          <div className="result-row"><span>Цена за единицу (доход):</span><span>{formatKZT(selectedItem.sellPrice)} x {selectedItem.sellQty} шт</span></div>
+          <div className="result-row"><span>Общая выручка:</span><span>{formatKZT(selectedItem.sellTotal)}</span></div>
+          <div className="result-row" style={{ marginTop: '10px' }}><span>Цена закупа за единицу:</span><span>{formatKZT(selectedItem.buyPrice)} x {selectedItem.buyQty} шт</span></div>
+          <div className="result-row"><span>Общая сумма закупа:</span><span>{formatKZT(selectedItem.buyTotal)}</span></div>
+          
+          {selectedItem.expenses && selectedItem.expenses.length > 0 && (
+            <div style={{ marginTop: '10px' }}>
+              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Дополнительные расходы:</div>
+              {selectedItem.expenses.map((e, idx) => (
+                <div key={idx} className="result-row" style={{ fontSize: '13px', paddingLeft: '10px' }}><span>- {e.name}</span><span>{formatKZT(e.amount)}</span></div>
+              ))}
+            </div>
+          )}
+          
+          <div className="result-row" style={{ marginTop: '10px' }}><span>Сумма доп. расходов:</span><span>{formatKZT(selectedItem.totalExtra)}</span></div>
+          <div className="result-row"><span>Сумма налога:</span><span>{formatKZT(selectedItem.taxAmount)}</span></div>
+          <div className="result-row" style={{ marginTop: '10px', fontWeight: 'bold' }}><span>Полная себестоимость (Закуп + Допы + Налог):</span><span>{formatKZT(selectedItem.totalCosts + selectedItem.taxAmount)}</span></div>
+          <div className="result-row" style={{ color: 'var(--text-secondary)' }}><span>Себестоимость 1 единицы:</span><span>{selectedItem.buyQty > 0 ? formatKZT((selectedItem.totalCosts + selectedItem.taxAmount) / selectedItem.buyQty) : '0 ₸'}</span></div>
+          
+          <div className="result-row total" style={{ marginTop: '16px' }}><span>Чистая прибыль:</span><span style={{ color: 'var(--success-color)'}}>{formatKZT(selectedItem.netProfit)}</span></div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '24px' }}>
             <button className="btn-secondary" onClick={() => exportToPDF(selectedItem)}><FileText size={16} /> PDF Отчет</button>
@@ -908,15 +842,50 @@ const CalendarScreen = ({ company, updateCompany }) => {
 // SHARED HELPERS (PDF/Excel)
 // ========================
 const exportToExcel = (r) => {
-  const ws = xlsx.utils.aoa_to_sheet([["ОТЧЕТ", ""], ["Товар", r.productName], ["Выручка", r.sellTotal], ["Закуп", r.buyTotal], ["Прибыль", r.netProfit]]);
-  ws['!cols'] = [{ wch: 20 }, { wch: 20 }];
+  const expensesData = (r.expenses || []).map(e => ["Доп. расход", e.name, e.amount]);
+  const ws = xlsx.utils.aoa_to_sheet([
+    ["ОТЧЕТ", ""], 
+    ["Товар", r.productName], 
+    ["Выручка", r.sellTotal], 
+    ["Цена дохода за 1 шт", r.sellPrice],
+    ["Кол-во продажи", r.sellQty],
+    ["Закуп", r.buyTotal], 
+    ["Цена закупа за 1 шт", r.buyPrice],
+    ["Кол-во закупа", r.buyQty],
+    ...expensesData,
+    ["Сумма доп. расходов", r.totalExtra],
+    ["Налог", r.taxAmount],
+    ["Полная себестоимость", r.totalCosts + r.taxAmount],
+    ["Себестоимость 1 шт", r.buyQty > 0 ? (r.totalCosts + r.taxAmount) / r.buyQty : 0],
+    ["Прибыль", r.netProfit]
+  ]);
+  ws['!cols'] = [{ wch: 25 }, { wch: 20 }];
   const wb = xlsx.utils.book_new(); xlsx.utils.book_append_sheet(wb, ws, "Расчет");
   xlsx.writeFile(wb, `tender_${r.id}.xlsx`);
 };
+
 const exportToPDF = (r) => {
-  const doc = { content: [{ text: `Отчет: ${r.productName}`, style: 'header' }, { table: { body: [['Выручка', formatKZT(r.sellTotal)], ['Закуп', formatKZT(r.buyTotal)], ['Прибыль', formatKZT(r.netProfit)]] } }], styles: { header: { fontSize: 20, bold: true, margin: [0,0,0,10] } } };
+  const expensesData = (r.expenses || []).map(e => [`Доп. расход: ${e.name}`, formatKZTPDF(e.amount)]);
+  const doc = { 
+    content: [
+      { text: `Отчет: ${r.productName}`, style: 'header' }, 
+      { table: { body: [
+        ['Выручка', formatKZTPDF(r.sellTotal)], 
+        ['Цена продажи 1 шт', formatKZTPDF(r.sellPrice)],
+        ['Закуп', formatKZTPDF(r.buyTotal)], 
+        ['Цена закупа 1 шт', formatKZTPDF(r.buyPrice)],
+        ...expensesData,
+        ['Сумма доп. расходов', formatKZTPDF(r.totalExtra)],
+        ['Сумма налога', formatKZTPDF(r.taxAmount)],
+        ['Полная себестоимость', formatKZTPDF(r.totalCosts + r.taxAmount)],
+        ['Прибыль', formatKZTPDF(r.netProfit)]
+      ] } }
+    ], 
+    styles: { header: { fontSize: 20, bold: true, margin: [0,0,0,10] } } 
+  };
   pdfMake.createPdf(doc).download(`report_${r.id}.pdf`);
 };
+
 const exportInvoice = (r, company, cName) => {
   const req = company.requisites || {};
   const doc = {
@@ -929,11 +898,11 @@ const exportInvoice = (r, company, cName) => {
           headerRows: 1, widths: ['auto', '*', 'auto', 'auto', 'auto'],
           body: [
             ['№', 'Наименование товара', 'Кол-во', 'Цена', 'Сумма'],
-            ['1', r.productName || 'Товар по договору', r.sellQty || 1, formatKZT(r.sellPrice), formatKZT(r.sellTotal)]
+            ['1', r.productName || 'Товар по договору', r.sellQty || 1, formatKZTPDF(r.sellPrice), formatKZTPDF(r.sellTotal)]
           ]
         }
       },
-      { text: `Итого к оплате: ${formatKZT(r.sellTotal)}`, bold: true, alignment: 'right', margin: [0,20,0,40] },
+      { text: `Итого к оплате: ${formatKZTPDF(r.sellTotal)}`, bold: true, alignment: 'right', margin: [0,20,0,40] },
       { text: 'Руководитель: ___________________', margin: [0,20,0,0] }
     ],
     styles: { header: { fontSize: 18, bold: true } }, defaultStyle: { font: 'Roboto', fontSize: 12 }
@@ -951,11 +920,11 @@ const exportAct = (r, company, cName) => {
           headerRows: 1, widths: ['auto', '*', 'auto', 'auto', 'auto'],
           body: [
             ['№', 'Наименование', 'Кол-во', 'Цена', 'Сумма'],
-            ['1', r.productName || 'Товар/Услуга', r.sellQty || 1, formatKZT(r.sellPrice), formatKZT(r.sellTotal)]
+            ['1', r.productName || 'Товар/Услуга', r.sellQty || 1, formatKZTPDF(r.sellPrice), formatKZTPDF(r.sellTotal)]
           ]
         }
       },
-      { text: `Общая стоимость: ${formatKZT(r.sellTotal)}`, bold: true, alignment: 'right', margin: [0,20,0,40] },
+      { text: `Общая стоимость: ${formatKZTPDF(r.sellTotal)}`, bold: true, alignment: 'right', margin: [0,20,0,40] },
       { columns: [
           { text: 'Сдал (Исполнитель):\n\n___________________', alignment: 'left' },
           { text: 'Принял (Заказчик):\n\n___________________', alignment: 'right' }
