@@ -241,7 +241,7 @@ const CreateCompanyScreen = ({ onSuccess, onCancel }) => {
       const newComp = await api.createCompany({ name, tax_type: taxType });
       onSuccess(newComp);
     } catch (e) {
-      alert("Ошибка при создании компании");
+      alert(`Ошибка при создании компании: ${e.message}`);
       console.error(e);
     } finally {
       setIsSubmitting(false);

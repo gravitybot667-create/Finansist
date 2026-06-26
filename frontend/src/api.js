@@ -22,6 +22,10 @@ export const createCompany = async (companyData) => {
     headers: getHeaders(),
     body: JSON.stringify(companyData)
   });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP Error ${res.status}: ${text}`);
+  }
   return res.json();
 };
 
