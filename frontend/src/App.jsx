@@ -281,7 +281,7 @@ const SettingsModal = ({ company, updateCompany, onClose, companyName }) => {
   const save = () => { updateCompany({ requisites: reqs }); onClose(); };
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ padding: '20px' }}>
+    <div className="glass-panel animate-fade-in" style={{ padding: '20px 20px 100px 20px' }}>
       <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>Реквизиты {companyName}</h2>
       <div className="input-row"><div className="input-group" style={{ flex: 1 }}><label>БИН / ИИН</label><input type="text" className="input-field" value={reqs.bin} onChange={e => setReqs({...reqs, bin: e.target.value})} /></div></div>
       <div className="input-row"><div className="input-group" style={{ flex: 1 }}><label>Банк</label><input type="text" className="input-field" value={reqs.bank} onChange={e => setReqs({...reqs, bank: e.target.value})} /></div></div>
