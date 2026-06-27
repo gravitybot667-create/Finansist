@@ -219,7 +219,7 @@ function App() {
               <div key={c.id} className={`tab ${appState.activeCompanyId === c.id ? 'active' : ''}`} onClick={() => setAppState(p => ({...p, activeCompanyId: c.id}))}>{c.name}</div>
             ))}
           </div>
-          <button onClick={() => setShowSettings(true)} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}><Settings size={20} /></button>
+          <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}><Settings size={20} /></button>
           <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}>
             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
           </button>
