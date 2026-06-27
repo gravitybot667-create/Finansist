@@ -25,15 +25,39 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 dp.include_router(router)
 
+async def keep_alive():
+    """Ping the server itself every 10 minutes to prevent Render from sleeping."""
+    url = os.getenv("WEBAPP_URL")
+    if not url:
+        return
+    import aiohttp
+    
+    # Wait a bit for the server to fully start
+    await asyncio.sleep(10)
+    
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    logging.info(f"Keep-alive ping sent to {url}. Status: {response.status}")
+        except Exception as e:
+            logging.error(f"Keep-alive ping failed: {e}")
+        
+        # Ping every 10 minutes (600 seconds)
+        await asyncio.sleep(600)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB
     init_db()
     # Start bot polling in background
     polling_task = asyncio.create_task(dp.start_polling(bot))
+    # Start keep_alive task
+    keep_alive_task = asyncio.create_task(keep_alive())
     yield
     # Stop bot
     polling_task.cancel()
+    keep_alive_task.cancel()
 
 app = FastAPI(lifespan=lifespan)
 
