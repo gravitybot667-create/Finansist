@@ -82,3 +82,12 @@ export const getCompanyMembers = async (companyId) => {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 };
+
+export const removeCompanyMember = async (companyId, userId) => {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/members/${userId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};

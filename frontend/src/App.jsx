@@ -227,12 +227,12 @@ function App() {
       </div>
 
       {showSettings && (
-        <SettingsModal company={company} updateCompany={updateCompany} onClose={() => setShowSettings(false)} companyName={appState.activeCompanyId === 'ip' ? 'ИП' : 'ТОО'} />
+        <SettingsModal company={company} updateCompany={updateCompany} onClose={() => setShowSettings(false)} companyName={company.name || 'Компания'} />
       )}
 
       <div style={{ paddingBottom: '80px', display: showSettings ? 'none' : 'block' }}>
         {activeTab === 'calc' && <CalculatorScreen company={company} onSaveResult={handleCreateTender} updateCompany={updateCompany} />}
-        {activeTab === 'crm' && <CRMScreen company={company} onUpdateStatus={handleUpdateTenderStatus} companyName={appState.activeCompanyId === 'ip' ? 'ИП' : 'ТОО'} />}
+        {activeTab === 'crm' && <CRMScreen company={company} onUpdateStatus={handleUpdateTenderStatus} companyName={company.name || 'Компания'} />}
         {activeTab === 'analytics' && <AnalyticsScreen company={company} balance={currentBalance} updateCompany={updateCompany} />}
         {activeTab === 'treasury' && <TreasuryScreen company={company} balance={currentBalance} updateCompany={updateCompany} />}
         {activeTab === 'calendar' && <CalendarScreen company={company} updateCompany={updateCompany} />}
@@ -278,6 +278,16 @@ const SettingsModal = ({ company, updateCompany, onClose, companyName }) => {
     }
   };
 
+  const handleRemoveMember = async (memberId) => {
+    if (!window.confirm("Удалить этого сотрудника?")) return;
+    try {
+      await api.removeCompanyMember(company.id, memberId);
+      setMembers(members.filter(m => m.id !== memberId));
+    } catch (e) {
+      alert("Ошибка при удалении сотрудника.");
+    }
+  };
+
   const save = () => { updateCompany({ requisites: reqs }); onClose(); };
 
   return (
@@ -292,9 +302,14 @@ const SettingsModal = ({ company, updateCompany, onClose, companyName }) => {
       <h3 style={{ marginTop: '20px', marginBottom: '10px', fontSize: '16px' }}>Команда</h3>
       <div style={{ marginBottom: '10px' }}>
         {members.map(m => (
-          <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: 'var(--bg-primary)', borderRadius: '8px', marginBottom: '4px' }}>
+          <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: 'var(--bg-primary)', borderRadius: '8px', marginBottom: '4px' }}>
             <span>{m.first_name || m.username || 'Без имени'}</span>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{m.role === 'owner' ? 'Владелец' : 'Сотрудник'}</span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{m.role === 'owner' ? 'Владелец' : 'Сотрудник'}</span>
+              {company.role === 'owner' && m.role !== 'owner' && (
+                <button onClick={() => handleRemoveMember(m.id)} style={{ padding: '2px 6px', background: 'var(--danger-color)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '12px' }}>Удалить</button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -440,14 +455,22 @@ const CalculatorScreen = ({ company, onSaveResult, updateCompany }) => {
             <div style={{ flex: 1 }}><div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ROI</div><div style={{ fontSize: '18px', fontWeight: 600 }}>{result.roi.toFixed(2)}%</div></div>
           </div>
           <div style={{ marginTop: '20px' }}>
-            <label style={{ fontSize: '14px', marginBottom: '8px', display: 'block' }}>Воронка: На каком этапе тендер?</label>
-            <select className="input-field" value={status} onChange={e => setStatus(e.target.value)} style={{ width: '100%', marginBottom: '16px' }}>
-              <option value="draft">Черновик (Просчет)</option>
-              <option value="submitted">Заявка подана</option>
-              <option value="won">Выигран (Заморозка средств)</option>
-              <option value="shipping">В процессе доставки</option>
-            </select>
-            <button className="btn-primary" onClick={saveTender} style={{ width: '100%' }}>Сохранить в CRM</button>
+            {company.role === 'owner' ? (
+              <>
+                <label style={{ fontSize: '14px', marginBottom: '8px', display: 'block' }}>Воронка: На каком этапе тендер?</label>
+                <select className="input-field" value={status} onChange={e => setStatus(e.target.value)} style={{ width: '100%', marginBottom: '16px' }}>
+                  <option value="draft">Черновик (Просчет)</option>
+                  <option value="submitted">Заявка подана</option>
+                  <option value="won">Выигран (Заморозка средств)</option>
+                  <option value="shipping">В процессе доставки</option>
+                </select>
+                <button className="btn-primary" onClick={saveTender} style={{ width: '100%' }}>Сохранить в CRM</button>
+              </>
+            ) : (
+              <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '12px', textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Сохранение в CRM доступно только владельцу компании.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -458,7 +481,7 @@ const CalculatorScreen = ({ company, onSaveResult, updateCompany }) => {
 // ========================
 // 2. CRM SCREEN
 // ========================
-const getStatusLabel = (s) => ({ draft: 'Черновик', submitted: 'Заявка подана', won: 'Заморозка', shipping: 'Доставка', paid: 'Оплачено', lost: 'Проигран' }[s] || s);
+const getStatusLabel = (s) => ({ draft: 'Черновик', submitted: 'Заявка подана', won: 'Заморозка', shipping: 'Доставка', paid: 'Оплачено', lost: 'Отменен / Не состоялся' }[s] || s);
 const getStatusColor = (s) => ({ draft: '#6b7280', submitted: '#3b82f6', won: '#f59e0b', shipping: '#8b5cf6', paid: '#10b981', lost: '#ef4444' }[s] || '#000');
 
 const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
@@ -485,7 +508,7 @@ const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
               <option value="won">Выигран (Заморозка средств)</option>
               <option value="shipping">В процессе доставки</option>
               <option value="paid">Оплачено (В кассу)</option>
-              <option value="lost">Проигран (Отмена)</option>
+              <option value="lost">Отменен / Не состоялся</option>
             </select>
           </div>
           <div className="result-row"><span>Цена за единицу (доход):</span><span>{formatKZT(selectedItem.sellPrice)} x {selectedItem.sellQty} шт</span></div>
@@ -719,18 +742,20 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
         <div style={{ fontSize: '14px', opacity: 0.8 }}>Текущий баланс</div>
         <div className="balance-amount">{formatKZT(balance)}</div>
       </div>
-      {!formMode ? (
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
-          <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--success-color)', color: 'var(--success-color)' }} onClick={() => setFormMode('deposit')}>Внести</button>
-          <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw')}>Изъять</button>
-        </div>
-      ) : (
-        <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
-          <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>{formMode === 'deposit' ? 'Внесение в кассу' : 'Снятие из кассы'}</h3>
-          <input type="number" className="input-field" placeholder="Сумма" style={{ marginBottom: '10px' }} value={amount} onChange={e => setAmount(e.target.value)} />
-          <input type="text" className="input-field" placeholder="Комментарий" style={{ marginBottom: '16px' }} value={comment} onChange={e => setComment(e.target.value)} />
-          <div style={{ display: 'flex', gap: '10px' }}><button className="btn-secondary" style={{ flex: 1 }} onClick={() => setFormMode(null)}>Отмена</button><button className="btn-primary" style={{ flex: 1, background: formMode === 'deposit' ? 'var(--success-color)' : 'var(--danger-color)' }} onClick={handleTransaction}>{formMode === 'deposit' ? 'Внести' : 'Снять'}</button></div>
-        </div>
+      {company.role === 'owner' && (
+        !formMode ? (
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+            <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--success-color)', color: 'var(--success-color)' }} onClick={() => setFormMode('deposit')}>Внести</button>
+            <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw')}>Изъять</button>
+          </div>
+        ) : (
+          <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>{formMode === 'deposit' ? 'Внесение в кассу' : 'Снятие из кассы'}</h3>
+            <input type="number" className="input-field" placeholder="Сумма" style={{ marginBottom: '10px' }} value={amount} onChange={e => setAmount(e.target.value)} />
+            <input type="text" className="input-field" placeholder="Комментарий" style={{ marginBottom: '16px' }} value={comment} onChange={e => setComment(e.target.value)} />
+            <div style={{ display: 'flex', gap: '10px' }}><button className="btn-secondary" style={{ flex: 1 }} onClick={() => setFormMode(null)}>Отмена</button><button className="btn-primary" style={{ flex: 1, background: formMode === 'deposit' ? 'var(--success-color)' : 'var(--danger-color)' }} onClick={handleTransaction}>{formMode === 'deposit' ? 'Внести' : 'Снять'}</button></div>
+          </div>
+        )
       )}
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
