@@ -168,14 +168,26 @@ def create_company(company: CompanyCreate, user: User = Depends(get_current_user
         db.rollback()
         return JSONResponse(status_code=400, content=f"DB Error: {str(e)}\n{traceback.format_exc()}")
 
+import uuid
+from datetime import datetime, timedelta
+
 @app.get("/api/companies/{company_id}/invite")
 def get_invite_link(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
     m = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
     if not m or m.role != "owner":
         raise HTTPException(status_code=403, detail="Only owner can invite")
-    # Generates a deep link to start the bot with payload: invite_companyId
+    
+    company = db.query(Company).get(company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+        
+    token = str(uuid.uuid4())
+    company.invite_token = token
+    company.invite_token_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    db.commit()
+    
     bot_username = "Finansit7_bot" # Ideally fetch from bot.get_me()
-    return {"link": f"https://t.me/{bot_username}?start=invite_{company_id}"}
+    return {"link": f"https://t.me/{bot_username}?start=invite_{token}"}
 
 @app.get("/api/companies/{company_id}/members")
 def get_company_members(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
@@ -185,6 +197,21 @@ def get_company_members(company_id: int, user: User = Depends(get_current_user),
         u = db.query(User).get(m.user_id)
         res.append({"id": u.id, "username": u.username, "first_name": u.first_name, "role": m.role})
     return res
+
+@app.delete("/api/companies/{company_id}/members/{user_id}")
+def remove_company_member(company_id: int, user_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
+    m = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
+    if not m or m.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can remove members")
+    
+    if user_id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+        
+    member_to_remove = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user_id).first()
+    if member_to_remove:
+        db.delete(member_to_remove)
+        db.commit()
+    return {"success": True}
 
 class TenderCreate(BaseModel):
     product_name: str
@@ -208,6 +235,10 @@ class TenderCreate(BaseModel):
 
 @app.post("/api/companies/{company_id}/tenders")
 def create_tender(company_id: int, tender: TenderCreate, user: User = Depends(get_current_user), db=Depends(get_db)):
+    m = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
+    if not m or m.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can add tenders")
+        
     db_tender = Tender(**tender.dict(), company_id=company_id)
     db.add(db_tender)
     db.commit()
@@ -235,6 +266,10 @@ class TransactionCreate(BaseModel):
 
 @app.post("/api/companies/{company_id}/transactions")
 def create_transaction(company_id: int, tx: TransactionCreate, user: User = Depends(get_current_user), db=Depends(get_db)):
+    m = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
+    if not m or m.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can modify treasury")
+        
     db_tx = Transaction(**tx.dict(), company_id=company_id)
     db.add(db_tx)
     db.commit()

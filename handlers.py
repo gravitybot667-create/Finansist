@@ -24,10 +24,18 @@ async def cmd_start(message: Message, state: FSMContext):
     # Handle invite link
     args = message.text.split()
     if len(args) > 1 and args[1].startswith("invite_"):
-        company_id_str = args[1].replace("invite_", "")
-        if company_id_str.isdigit():
-            company_id = int(company_id_str)
-            db = SessionLocal()
+        token = args[1].replace("invite_", "")
+        from datetime import datetime
+        from database import Company
+        
+        db = SessionLocal()
+        company = db.query(Company).filter(Company.invite_token == token).first()
+        
+        if not company:
+            await message.answer("❌ Ссылка недействительна или не существует.")
+        elif not company.invite_token_expires_at or company.invite_token_expires_at < datetime.utcnow():
+            await message.answer("⏰ Ссылка устарела. Запросите новую у владельца.")
+        else:
             # Ensure user exists
             user = db.query(User).filter(User.id == message.from_user.id).first()
             if not user:
@@ -36,14 +44,14 @@ async def cmd_start(message: Message, state: FSMContext):
                 db.commit()
             
             # Check if already in company
-            existing = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
+            existing = db.query(CompanyMember).filter(CompanyMember.company_id == company.id, CompanyMember.user_id == user.id).first()
             if not existing:
-                db.add(CompanyMember(company_id=company_id, user_id=user.id, role="member"))
+                db.add(CompanyMember(company_id=company.id, user_id=user.id, role="member"))
                 db.commit()
-                await message.answer("✅ Вы успешно добавлены в компанию как сотрудник!")
+                await message.answer(f"✅ Вы успешно добавлены в компанию {company.name} как сотрудник!")
             else:
                 await message.answer("ℹ️ Вы уже состоите в этой компании.")
-            db.close()
+        db.close()
             
     webapp_url = os.getenv("WEBAPP_URL")
     if not webapp_url:

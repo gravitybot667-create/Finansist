@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Float, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import text
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
 import os
@@ -43,6 +42,10 @@ class Company(Base):
     iik = Column(String, nullable=True)
     bik = Column(String, nullable=True)
     address = Column(String, nullable=True)
+
+    # Invite Link
+    invite_token = Column(String, nullable=True)
+    invite_token_expires_at = Column(DateTime, nullable=True)
 
 class CompanyMember(Base):
     __tablename__ = "company_members"
