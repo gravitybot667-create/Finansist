@@ -48,6 +48,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('erpTheme') || 'light');
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   const [appState, setAppState] = useState({
     activeCompanyId: null,
@@ -67,8 +68,11 @@ function App() {
       }
     } catch (e) {}
 
-    const loadData = async () => {
+    const loadData = async (retries = 3) => {
       try {
+        setErrorMsg(null);
+        // Добавляем небольшую задержку, чтобы Telegram.WebApp.initData успел инициализироваться
+        await new Promise(r => setTimeout(r, 300));
         const comps = await api.fetchCompanies();
         if (comps && comps.length > 0) {
           const companiesObj = {};
@@ -90,10 +94,15 @@ function App() {
             companies: companiesObj
           });
         }
+        setLoading(false);
       } catch (e) {
         console.error("Failed to load data:", e);
-      } finally {
-        setLoading(false);
+        if (retries > 0) {
+          setTimeout(() => loadData(retries - 1), 1000);
+        } else {
+          setErrorMsg(e.message || "Ошибка подключения");
+          setLoading(false);
+        }
       }
     };
     loadData();
@@ -199,8 +208,31 @@ function App() {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>Загрузка данных с сервера...</div>;
   }
 
+  if (errorMsg) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', padding: '20px', textAlign: 'center' }}>
+        <div style={{ color: 'var(--danger-color)', marginBottom: '10px' }}>Ошибка загрузки</div>
+        <div style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>{errorMsg}</div>
+        <button className="btn-primary" onClick={() => { setLoading(true); window.location.reload(); }}>Обновить</button>
+      </div>
+    );
+  }
+
   if (!company) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>У вас пока нет компаний.</div>;
+    return <CreateCompanyScreen 
+      onCreated={(c) => {
+        setAppState({
+          activeCompanyId: c.id,
+          companies: {
+            [c.id]: {
+              id: c.id, name: c.name, role: c.role, taxType: c.tax_type, monthlyGoal: c.monthly_goal,
+              requisites: { bin: '', bank: '', iik: '', bik: '', address: '' },
+              tenders: [], treasuryTransactions: [], reminders: []
+            }
+          }
+        });
+      }} 
+    />;
   }
 
   return (
@@ -248,6 +280,67 @@ function App() {
     </div>
   );
 }
+
+// ========================
+// CREATE COMPANY SCREEN
+// ========================
+const CreateCompanyScreen = ({ onCreated }) => {
+  const [name, setName] = useState('');
+  const [taxType, setTaxType] = useState('ip');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return alert("Введите название компании");
+    setIsSubmitting(true);
+    try {
+      const data = await api.createCompany({ name, tax_type: taxType });
+      onCreated(data);
+    } catch (e) {
+      alert("Ошибка при создании компании: " + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', padding: '20px' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '24px' }}>
+        <h2 style={{ textAlign: 'center', marginBottom: '20px', fontSize: '20px' }}>Добро пожаловать!</h2>
+        <p style={{ textAlign: 'center', marginBottom: '24px', color: 'var(--text-secondary)', fontSize: '14px' }}>Для начала работы создайте свою первую компанию.</p>
+        
+        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>Название компании (или ваше имя)</label>
+        <input 
+          type="text" 
+          className="input-field" 
+          placeholder="Например: ИП Иванов" 
+          value={name} 
+          onChange={e => setName(e.target.value)} 
+          style={{ width: '100%', marginBottom: '16px' }}
+        />
+        
+        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>Форма собственности</label>
+        <select 
+          className="input-field" 
+          value={taxType} 
+          onChange={e => setTaxType(e.target.value)} 
+          style={{ width: '100%', marginBottom: '24px' }}
+        >
+          <option value="ip">Индивидуальный Предприниматель (ИП)</option>
+          <option value="too">Товарищество (ТОО / ООО)</option>
+        </select>
+        
+        <button 
+          className="btn-primary" 
+          style={{ width: '100%' }} 
+          onClick={handleSubmit} 
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? 'Создание...' : 'Создать компанию'}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ========================
 // SETTINGS MODAL
