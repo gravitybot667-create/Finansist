@@ -186,7 +186,7 @@ def get_invite_link(company_id: int, user: User = Depends(get_current_user), db=
     company.invite_token_expires_at = datetime.utcnow() + timedelta(minutes=5)
     db.commit()
     
-    bot_username = "Finansit7_bot" # Ideally fetch from bot.get_me()
+    bot_username = os.getenv("BOT_USERNAME", "Tendify_bot") # Fallback to new bot name
     return {"link": f"https://t.me/{bot_username}?start=invite_{token}"}
 
 @app.get("/api/companies/{company_id}/members")
