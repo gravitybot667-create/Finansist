@@ -241,7 +241,7 @@ function App() {
 
       <div style={{ paddingBottom: '80px', display: showSettings ? 'none' : 'block' }}>
         {activeTab === 'calc' && <CalculatorScreen company={company} onSaveResult={handleCreateTender} updateCompany={updateCompany} />}
-        {activeTab === 'crm' && <CRMScreen company={company} onUpdateStatus={handleUpdateTenderStatus} companyName={company.name || 'Компания'} />}
+        {activeTab === 'crm' && <CRMScreen company={company} updateCompany={updateCompany} companyName={company.name || 'Компания'} />}
         {activeTab === 'analytics' && <AnalyticsScreen company={company} balance={currentBalance} updateCompany={updateCompany} />}
         {activeTab === 'treasury' && <TreasuryScreen company={company} balance={currentBalance} updateCompany={updateCompany} />}
         {activeTab === 'calendar' && <CalendarScreen company={company} updateCompany={updateCompany} />}
