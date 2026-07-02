@@ -90,6 +90,8 @@ class Transaction(Base):
     type = Column(String) # income, expense
     amount = Column(Float)
     description = Column(String)
+    category = Column(String, nullable=True)
+    author_name = Column(String, nullable=True)
     is_tax = Column(Boolean, default=False)
     date = Column(DateTime, default=datetime.utcnow)
 
@@ -117,6 +119,14 @@ def init_db():
                     conn.execute(text("ALTER TABLE tenders ADD COLUMN expenses_detail JSON;"))
                 except Exception:
                     pass # Column might already exist
+                try:
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN category VARCHAR;"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN author_name VARCHAR;"))
+                except Exception:
+                    pass
                 conn.commit()
         except Exception as e:
-            print("DB Alter failed or already bigints:", e)
+            print(f"Error during migration: {e}")

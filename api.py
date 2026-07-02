@@ -351,6 +351,7 @@ class TransactionCreate(BaseModel):
     type: str
     amount: float
     description: str
+    category: Optional[str] = None
     ref_tender_id: Optional[int] = None
     is_tax: Optional[bool] = False
 
@@ -360,7 +361,8 @@ def create_transaction(company_id: int, tx: TransactionCreate, user: User = Depe
     if not m or m.role != "owner":
         raise HTTPException(status_code=403, detail="Only owner can modify treasury")
         
-    db_tx = Transaction(**tx.dict(), company_id=company_id)
+    author = user.first_name or user.username or f"User {user.id}"
+    db_tx = Transaction(**tx.dict(), company_id=company_id, author_name=author)
     db.add(db_tx)
     db.commit()
     db.refresh(db_tx)
