@@ -110,23 +110,18 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     # Attempt to alter existing tables to use BIGINT for Telegram IDs if using PostgreSQL
     if "postgres" in DATABASE_URL:
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE users ALTER COLUMN id TYPE BIGINT;"))
-                conn.execute(text("ALTER TABLE companies ALTER COLUMN owner_id TYPE BIGINT;"))
-                conn.execute(text("ALTER TABLE company_members ALTER COLUMN user_id TYPE BIGINT;"))
-                try:
-                    conn.execute(text("ALTER TABLE tenders ADD COLUMN expenses_detail JSON;"))
-                except Exception:
-                    pass # Column might already exist
-                try:
-                    conn.execute(text("ALTER TABLE transactions ADD COLUMN category VARCHAR;"))
-                except Exception:
-                    pass
-                try:
-                    conn.execute(text("ALTER TABLE transactions ADD COLUMN author_name VARCHAR;"))
-                except Exception:
-                    pass
-                conn.commit()
-        except Exception as e:
-            print(f"Error during migration: {e}")
+        # We must use separate transactions because if one ALTER fails (e.g. column exists), 
+        # PostgreSQL aborts the entire transaction block.
+        def safe_execute(query):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(query))
+            except Exception:
+                pass
+                
+        safe_execute("ALTER TABLE users ALTER COLUMN id TYPE BIGINT;")
+        safe_execute("ALTER TABLE companies ALTER COLUMN owner_id TYPE BIGINT;")
+        safe_execute("ALTER TABLE company_members ALTER COLUMN user_id TYPE BIGINT;")
+        safe_execute("ALTER TABLE tenders ADD COLUMN expenses_detail JSON;")
+        safe_execute("ALTER TABLE transactions ADD COLUMN category VARCHAR;")
+        safe_execute("ALTER TABLE transactions ADD COLUMN author_name VARCHAR;")
