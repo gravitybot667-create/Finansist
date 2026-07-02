@@ -557,25 +557,108 @@ const CalculatorScreen = ({ company, onSaveResult, updateCompany }) => {
 const getStatusLabel = (s) => ({ draft: 'Черновик', submitted: 'Заявка подана', won: 'Заморозка', shipping: 'Доставка', paid: 'Оплачено', lost: 'Отменен / Не состоялся' }[s] || s);
 const getStatusColor = (s) => ({ draft: '#6b7280', submitted: '#3b82f6', won: '#f59e0b', shipping: '#8b5cf6', paid: '#10b981', lost: '#ef4444' }[s] || '#000');
 
-const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
+const CRMScreen = ({ company, updateCompany, companyName }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [deliveryQty, setDeliveryQty] = useState('');
 
   const filteredTenders = company.tenders.filter(item => {
     if (!searchQuery) return true;
     return (item.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) || (item.lotNumber || '').includes(searchQuery);
   });
+  
+  const handleUpdateStatus = async (id, status) => {
+    try {
+      await api.updateTender(company.id, id, { status });
+      const updatedTenders = company.tenders.map(t => t.id === id ? { ...t, status } : t);
+      updateCompany({ tenders: updatedTenders });
+      setSelectedItem({ ...selectedItem, status });
+    } catch (e) {
+      alert("Ошибка при обновлении: " + e.message);
+    }
+  };
+
+  const handleDeleteTender = async () => {
+    if (!window.confirm("Удалить тендер? Это также удалит все связанные финансовые операции из кассы.")) return;
+    try {
+      await api.deleteTender(company.id, selectedItem.id);
+      const updatedTenders = company.tenders.filter(t => t.id !== selectedItem.id);
+      const updatedTx = await api.fetchTransactions(company.id);
+      updateCompany({ tenders: updatedTenders, treasuryTransactions: updatedTx });
+      setSelectedItem(null);
+    } catch (e) {
+      alert("Ошибка при удалении: " + e.message);
+    }
+  };
+
+  const handleManualTx = async (type) => {
+    const sum = prompt(`Введите сумму ${type === 'income' ? 'полученной оплаты' : 'расхода на закуп'}:`);
+    if (!sum) return;
+    const val = parseFloat(sum);
+    if (isNaN(val) || val <= 0) return alert("Некорректная сумма");
+    try {
+      const txRes = await api.createTransaction(company.id, {
+        type,
+        amount: val,
+        description: `${type === 'income' ? 'Оплата' : 'Расход'} (Тендер: ${selectedItem.productName})`,
+        ref_tender_id: selectedItem.id
+      });
+      const updatedTx = await api.fetchTransactions(company.id);
+      updateCompany({ treasuryTransactions: updatedTx });
+      alert("Успешно добавлено в кассу!");
+    } catch (e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+  
+  const handleAddDelivery = async () => {
+    if (!deliveryDate || !deliveryQty) return alert("Введите дату и количество");
+    const newDelivery = {
+      id: Date.now(),
+      date: new Date(deliveryDate).toISOString(),
+      quantity: parseInt(deliveryQty),
+      status: 'pending'
+    };
+    const updatedDeliveries = [...(selectedItem.deliveries || []), newDelivery];
+    try {
+      await api.updateTender(company.id, selectedItem.id, { deliveries: updatedDeliveries });
+      const updatedTenders = company.tenders.map(t => t.id === selectedItem.id ? { ...t, deliveries: updatedDeliveries } : t);
+      updateCompany({ tenders: updatedTenders });
+      setSelectedItem({ ...selectedItem, deliveries: updatedDeliveries });
+      setDeliveryDate('');
+      setDeliveryQty('');
+    } catch (e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+
+  const handleRemoveDelivery = async (delId) => {
+    const updatedDeliveries = (selectedItem.deliveries || []).filter(d => d.id !== delId);
+    try {
+      await api.updateTender(company.id, selectedItem.id, { deliveries: updatedDeliveries });
+      const updatedTenders = company.tenders.map(t => t.id === selectedItem.id ? { ...t, deliveries: updatedDeliveries } : t);
+      updateCompany({ tenders: updatedTenders });
+      setSelectedItem({ ...selectedItem, deliveries: updatedDeliveries });
+    } catch (e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
 
   if (selectedItem) {
     return (
       <div className="animate-fade-in" style={{ padding: '0 4px' }}>
-        <button className="btn-secondary" onClick={() => setSelectedItem(null)} style={{ marginBottom: '16px' }}><ChevronLeft size={18} /> К списку</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <button className="btn-secondary" onClick={() => setSelectedItem(null)}><ChevronLeft size={18} /> К списку</button>
+          {company.role === 'owner' && <button className="btn-secondary" onClick={handleDeleteTender} style={{ color: 'var(--danger-color)', borderColor: 'var(--danger-color)' }}><Trash2 size={18} /> Удалить</button>}
+        </div>
         <div className="glass-panel result-card">
           <h3 style={{ fontSize: '18px' }}>{selectedItem.productName || 'Без названия'}</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>Лот: {selectedItem.lotNumber || '—'} | Договор: {selectedItem.signDate || '—'}</p>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ fontSize: '12px', display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Статус тендера:</label>
-            <select className="input-field" value={selectedItem.status} onChange={e => { onUpdateStatus(selectedItem.id, e.target.value); setSelectedItem({...selectedItem, status: e.target.value}); }} style={{ width: '100%' }}>
+            <select className="input-field" value={selectedItem.status} onChange={e => handleUpdateStatus(selectedItem.id, e.target.value)} style={{ width: '100%' }}>
               <option value="draft">Черновик (Просчет)</option>
               <option value="submitted">Заявка подана</option>
               <option value="won">Выигран (Заморозка средств)</option>
@@ -605,6 +688,33 @@ const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
           <div className="result-row" style={{ color: 'var(--text-secondary)' }}><span>Себестоимость 1 единицы:</span><span>{selectedItem.buyQty > 0 ? formatKZT((selectedItem.totalCosts + selectedItem.taxAmount) / selectedItem.buyQty) : '0 ₸'}</span></div>
           
           <div className="result-row total" style={{ marginTop: '16px' }}><span>Чистая прибыль:</span><span style={{ color: 'var(--success-color)'}}>{formatKZT(selectedItem.netProfit)}</span></div>
+          
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <h4 style={{ fontSize: '14px', marginBottom: '12px' }}>Управление финансами тендера</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button className="btn-secondary" style={{ borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => handleManualTx('expense')}>- Внести расход</button>
+              <button className="btn-secondary" style={{ borderColor: 'var(--success-color)', color: 'var(--success-color)' }} onClick={() => handleManualTx('income')}>+ Внести оплату</button>
+            </div>
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px' }}>Внесенные суммы отразятся в общей кассе компании.</p>
+          </div>
+
+          <div style={{ marginTop: '24px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '12px' }}>
+            <h4 style={{ fontSize: '14px', marginBottom: '12px' }}>График поставок (Партии)</h4>
+            {(selectedItem.deliveries || []).map(d => (
+              <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>{d.quantity} шт</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{format(new Date(d.date), 'dd.MM.yyyy')}</div>
+                </div>
+                <Trash2 size={16} color="var(--danger-color)" style={{ cursor: 'pointer' }} onClick={() => handleRemoveDelivery(d.id)} />
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <input type="date" className="input-field" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} style={{ flex: 1, padding: '8px' }} />
+              <input type="number" className="input-field" placeholder="Кол-во" value={deliveryQty} onChange={e => setDeliveryQty(e.target.value)} style={{ flex: 1, padding: '8px' }} />
+            </div>
+            <button className="btn-primary" style={{ width: '100%', marginTop: '8px', padding: '8px' }} onClick={handleAddDelivery}>Добавить партию</button>
+          </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '24px' }}>
             <button className="btn-secondary" onClick={() => exportToPDF(selectedItem)}><FileText size={16} /> PDF Отчет</button>
@@ -938,6 +1048,9 @@ const CalendarScreen = ({ company, updateCompany }) => {
   const monthEnd = endOfMonth(monthStart);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const selectedReminders = selectedDate ? company.reminders.filter(r => isSameDay(new Date(r.date), selectedDate)) : [];
+  
+  const tenderDeliveries = company.tenders.flatMap(t => (t.deliveries || []).map(d => ({ ...d, productName: t.productName })));
+  const selectedDeliveries = selectedDate ? tenderDeliveries.filter(d => isSameDay(new Date(d.date), selectedDate)) : [];
 
   const handleAdd = () => {
     if (selectedDate && remText) {
@@ -960,17 +1073,34 @@ const CalendarScreen = ({ company, updateCompany }) => {
           {Array.from({ length: (monthStart.getDay() + 6) % 7 }).map((_, i) => <div key={`pad-${i}`} />)}
           {daysInMonth.map(day => {
             const hasReminder = company.reminders.some(r => isSameDay(new Date(r.date), day));
+            const hasDelivery = tenderDeliveries.some(d => isSameDay(new Date(d.date), day));
+            let cls = 'calendar-day';
+            if (hasReminder) cls += ' frozen';
+            if (hasDelivery) cls += ' delivery';
             return (
-              <div key={day.toISOString()} className={`calendar-day ${hasReminder ? 'frozen' : ''}`} style={{ background: selectedDate && isSameDay(selectedDate, day) ? 'var(--primary-color)' : '', color: selectedDate && isSameDay(selectedDate, day) ? '#fff' : '' }} onClick={() => setSelectedDate(day)}>
+              <div key={day.toISOString()} className={cls} style={{ background: selectedDate && isSameDay(selectedDate, day) ? 'var(--primary-color)' : '', color: selectedDate && isSameDay(selectedDate, day) ? '#fff' : '' }} onClick={() => setSelectedDate(day)}>
                 {format(day, 'd')}
               </div>
             );
           })}
         </div>
       </div>
+      
       {selectedDate && (
         <div className="glass-panel animate-fade-in" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>События на {format(selectedDate, 'dd.MM.yyyy')}</h3>
+          <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>События на {format(selectedDate, 'd MMMM yyyy', { locale: ru })}</h3>
+          
+          {selectedDeliveries.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Поставки:</h4>
+              {selectedDeliveries.map(d => (
+                <div key={d.id} style={{ padding: '10px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '8px' }}>
+                  <div style={{ fontWeight: 500, fontSize: '14px' }}>{d.productName}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Количество: {d.quantity} шт</div>
+                </div>
+              ))}
+            </div>
+          )}
           {selectedReminders.length > 0 ? (
             <div style={{ marginBottom: '16px' }}>
               {selectedReminders.map(r => (

@@ -61,6 +61,25 @@ export const updateTenderStatus = async (companyId, tenderId, status) => {
   return res.json();
 };
 
+export const updateTender = async (companyId, tenderId, data) => {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/tenders/${tenderId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};
+
+export const deleteTender = async (companyId, tenderId) => {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/tenders/${tenderId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};
+
 export const createTransaction = async (companyId, txData) => {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/transactions`, {
     method: 'POST',
