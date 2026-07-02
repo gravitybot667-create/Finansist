@@ -46,6 +46,7 @@ const mapTender = (t) => ({
 function App() {
   const [activeTab, setActiveTab] = useState('calc');
   const [showSettings, setShowSettings] = useState(false);
+  const [showAddCompany, setShowAddCompany] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('erpTheme') || 'light');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
