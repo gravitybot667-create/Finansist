@@ -61,13 +61,6 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    try {
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-      }
-    } catch (e) {}
-
     const loadData = async (retries = 3) => {
       try {
         setErrorMsg(null);
@@ -95,6 +88,12 @@ function App() {
           });
         }
         setLoading(false);
+        try {
+          if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+          }
+        } catch (e) {}
       } catch (e) {
         console.error("Failed to load data:", e);
         if (retries > 0) {
@@ -102,6 +101,12 @@ function App() {
         } else {
           setErrorMsg(e.message || "Ошибка подключения");
           setLoading(false);
+          try {
+            if (window.Telegram && window.Telegram.WebApp) {
+              window.Telegram.WebApp.ready();
+              window.Telegram.WebApp.expand();
+            }
+          } catch (e) {}
         }
       }
     };
