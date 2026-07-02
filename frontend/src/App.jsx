@@ -218,8 +218,9 @@ function App() {
     );
   }
 
-  if (!company) {
+  if (!company || showAddCompany) {
     return <CreateCompanyScreen 
+      onCancel={company ? () => setShowAddCompany(false) : undefined}
       onCreated={(c) => {
         setAppState({
           activeCompanyId: c.id,
@@ -231,6 +232,8 @@ function App() {
             }
           }
         });
+        });
+        setShowAddCompany(false);
       }} 
     />;
   }
@@ -250,6 +253,7 @@ function App() {
             {Object.values(appState.companies).map(c => (
               <div key={c.id} className={`tab ${appState.activeCompanyId === c.id ? 'active' : ''}`} onClick={() => setAppState(p => ({...p, activeCompanyId: c.id}))}>{c.name}</div>
             ))}
+            <div className="tab" style={{ padding: '8px 12px', fontWeight: 'bold' }} onClick={() => setShowAddCompany(true)}>+</div>
           </div>
           <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}><Settings size={20} /></button>
           <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', padding: '6px', color: 'var(--text-secondary)' }}>
@@ -284,7 +288,7 @@ function App() {
 // ========================
 // CREATE COMPANY SCREEN
 // ========================
-const CreateCompanyScreen = ({ onCreated }) => {
+const CreateCompanyScreen = ({ onCreated, onCancel }) => {
   const [name, setName] = useState('');
   const [taxType, setTaxType] = useState('ip');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -329,14 +333,17 @@ const CreateCompanyScreen = ({ onCreated }) => {
           <option value="too">Товарищество (ТОО / ООО)</option>
         </select>
         
-        <button 
-          className="btn-primary" 
-          style={{ width: '100%' }} 
-          onClick={handleSubmit} 
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Создание...' : 'Создать компанию'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {onCancel && <button className="btn-secondary" style={{ flex: 1 }} onClick={onCancel}>Отмена</button>}
+          <button 
+            className="btn-primary" 
+            style={{ flex: 1 }} 
+            onClick={handleSubmit} 
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Создание...' : 'Создать'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -609,16 +616,17 @@ const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
           <div className="result-row" style={{ marginTop: '10px' }}><span>Цена закупа за единицу:</span><span>{formatKZT(selectedItem.buyPrice)} x {selectedItem.buyQty} шт</span></div>
           <div className="result-row"><span>Общая сумма закупа:</span><span>{formatKZT(selectedItem.buyTotal)}</span></div>
           
+          <div className="result-row" style={{ marginTop: '10px' }}><span>Сумма доп. расходов:</span><span>{formatKZT(selectedItem.totalExtra)}</span></div>
           {selectedItem.expenses && selectedItem.expenses.length > 0 && (
-            <div style={{ marginTop: '10px' }}>
-              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Дополнительные расходы:</div>
+            <div style={{ marginBottom: '10px' }}>
               {selectedItem.expenses.map((e, idx) => (
-                <div key={idx} className="result-row" style={{ fontSize: '13px', paddingLeft: '10px' }}><span>- {e.name}</span><span>{formatKZT(e.amount)}</span></div>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', paddingLeft: '10px', marginTop: '2px' }}>
+                  <span>- {e.name}</span>
+                  <span>{formatKZT(e.amount)}</span>
+                </div>
               ))}
             </div>
           )}
-          
-          <div className="result-row" style={{ marginTop: '10px' }}><span>Сумма доп. расходов:</span><span>{formatKZT(selectedItem.totalExtra)}</span></div>
           <div className="result-row"><span>Сумма налога:</span><span>{formatKZT(selectedItem.taxAmount)}</span></div>
           <div className="result-row" style={{ marginTop: '10px', fontWeight: 'bold' }}><span>Полная себестоимость (Закуп + Допы + Налог):</span><span>{formatKZT(selectedItem.totalCosts + selectedItem.taxAmount)}</span></div>
           <div className="result-row" style={{ color: 'var(--text-secondary)' }}><span>Себестоимость 1 единицы:</span><span>{selectedItem.buyQty > 0 ? formatKZT((selectedItem.totalCosts + selectedItem.taxAmount) / selectedItem.buyQty) : '0 ₸'}</span></div>
@@ -669,9 +677,11 @@ const CRMScreen = ({ company, onUpdateStatus, companyName }) => {
 // 3. ANALYTICS SCREEN
 // ========================
 const AnalyticsScreen = ({ company, balance, updateCompany }) => {
+  const [showFrozenDetails, setShowFrozenDetails] = useState(false);
   const wonTenders = company.tenders.filter(t => ['won', 'shipping', 'paid'].includes(t.status));
   const lostTenders = company.tenders.filter(t => t.status === 'lost');
   const paidTenders = company.tenders.filter(t => t.status === 'paid');
+  const frozenTenders = company.tenders.filter(t => ['won', 'shipping'].includes(t.status));
   
   const statusCounts = company.tenders.reduce((acc, t) => {
     acc[t.status] = (acc[t.status] || 0) + 1;
@@ -708,7 +718,7 @@ const AnalyticsScreen = ({ company, balance, updateCompany }) => {
       <h2 style={{ marginBottom: '20px', fontSize: '20px' }}>Аналитика</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
-        <div className="glass-panel" style={{ margin: 0, padding: '16px', textAlign: 'center' }}>
+        <div className="glass-panel" style={{ margin: 0, padding: '16px', textAlign: 'center', cursor: 'pointer' }} onClick={() => setShowFrozenDetails(true)}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Заморожено в товаре</div>
           <div style={{ fontSize: '16px', fontWeight: 600, color: '#f59e0b', marginTop: '4px' }}>{formatKZT(frozenCapital)}</div>
         </div>
@@ -804,6 +814,33 @@ const AnalyticsScreen = ({ company, balance, updateCompany }) => {
           ) : <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Нет завершенных сделок</div>}
         </div>
       </div>
+
+      {showFrozenDetails && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', margin: 0 }}>Заморожено в товаре</h3>
+              <button onClick={() => setShowFrozenDetails(false)} style={{ background: 'transparent', color: 'var(--text-secondary)' }}><X size={20} /></button>
+            </div>
+            {frozenTenders.length === 0 ? (
+              <div style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Нет замороженных средств</div>
+            ) : (
+              frozenTenders.map(t => (
+                <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: '14px' }}>{t.productName || 'Без названия'}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Лот: {t.lotNumber || '—'}</div>
+                  </div>
+                  <div style={{ fontWeight: 600, color: '#f59e0b', textAlign: 'right' }}>
+                    {formatKZT(t.totalCosts)}
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 400 }}>{t.status === 'won' ? 'Заморозка' : 'В доставке'}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
