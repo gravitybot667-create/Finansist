@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -47,6 +47,65 @@ async def keep_alive():
         # Ping every 10 minutes (600 seconds)
         await asyncio.sleep(600)
 
+async def check_deliveries():
+    """Background task to check delivery dates and send reminders via Telegram."""
+    await asyncio.sleep(20) # wait for startup
+    while True:
+        try:
+            db = SessionLocal()
+            tenders = db.query(Tender).filter(Tender.status.notin_(["draft", "paid"])).all()
+            now = datetime.utcnow()
+            
+            for t in tenders:
+                if not t.deliveries: continue
+                
+                updated_deliveries = []
+                changed = False
+                for d in t.deliveries:
+                    if not isinstance(d, dict) or 'date' not in d:
+                        updated_deliveries.append(d)
+                        continue
+                        
+                    try:
+                        del_date = datetime.fromisoformat(d['date'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        days_left = (del_date - now).days
+                        
+                        alerts_sent = d.get('alerts_sent', [])
+                        
+                        for target in [10, 5, 3, 1]:
+                            if days_left == target and target not in alerts_sent:
+                                # Send notification
+                                members = db.query(CompanyMember).filter(CompanyMember.company_id == t.company_id).all()
+                                for m in members:
+                                    try:
+                                        msg = f"🔔 Напоминание по тендеру: {t.product_name}\n" \
+                                              f"Поставка партии ({d.get('quantity', 0)} шт) запланирована на {del_date.strftime('%d.%m.%Y')} (через {target} дней)."
+                                        asyncio.create_task(bot.send_message(m.user_id, msg))
+                                    except Exception as e:
+                                        logging.error(f"Failed to send delivery alert to {m.user_id}: {e}")
+                                
+                                alerts_sent.append(target)
+                                changed = True
+                        
+                        d['alerts_sent'] = alerts_sent
+                    except Exception as e:
+                        logging.error(f"Error parsing delivery date: {e}")
+                    
+                    updated_deliveries.append(d)
+                
+                if changed:
+                    t.deliveries = updated_deliveries
+                    # SQLAlchemy JSON mutation tracking might need explicit set
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(t, "deliveries")
+                    db.commit()
+            
+            db.close()
+        except Exception as e:
+            logging.error(f"Error in check_deliveries: {e}")
+            
+        await asyncio.sleep(60 * 60) # Check every hour
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB
@@ -55,10 +114,13 @@ async def lifespan(app: FastAPI):
     polling_task = asyncio.create_task(dp.start_polling(bot))
     # Start keep_alive task
     keep_alive_task = asyncio.create_task(keep_alive())
+    # Start delivery check task
+    delivery_task = asyncio.create_task(check_deliveries())
     yield
     # Stop bot
     polling_task.cancel()
     keep_alive_task.cancel()
+    delivery_task.cancel()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -233,6 +295,7 @@ class TenderCreate(BaseModel):
     status: str
     sign_date: Optional[str] = None
     expenses_detail: Optional[list] = []
+    deliveries: Optional[list] = []
 
 @app.post("/api/companies/{company_id}/tenders")
 def create_tender(company_id: int, tender: TenderCreate, user: User = Depends(get_current_user), db=Depends(get_db)):
@@ -245,52 +308,44 @@ def create_tender(company_id: int, tender: TenderCreate, user: User = Depends(ge
     db.commit()
     db.refresh(db_tender)
     
-    sync_tender_transactions(db, db_tender)
-    
     return db_tender
 
 @app.get("/api/companies/{company_id}/tenders")
 def get_tenders(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
     return db.query(Tender).filter(Tender.company_id == company_id).order_by(Tender.id.desc()).all()
 
+class TenderUpdate(BaseModel):
+    status: Optional[str] = None
+    deliveries: Optional[list] = None
+
 @app.put("/api/companies/{company_id}/tenders/{tender_id}")
-def update_tender(company_id: int, tender_id: int, status: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+def update_tender(company_id: int, tender_id: int, data: TenderUpdate = Body(None), status: str = Query(None), user: User = Depends(get_current_user), db=Depends(get_db)):
     t = db.query(Tender).filter(Tender.id == tender_id, Tender.company_id == company_id).first()
     if t:
-        t.status = status
+        if status:
+            t.status = status
+        if data:
+            if data.status is not None:
+                t.status = data.status
+            if data.deliveries is not None:
+                t.deliveries = data.deliveries
         db.commit()
-        sync_tender_transactions(db, t)
+        db.refresh(t)
     return t
 
-def sync_tender_transactions(db, tender):
-    db.query(Transaction).filter(Transaction.ref_tender_id == tender.id).delete()
-    db.commit()
-
-    if tender.status in ['won', 'shipping', 'paid']:
-        cost_tx = Transaction(
-            company_id=tender.company_id,
-            type='expense',
-            amount=tender.total_costs,
-            description=f"Закуп и расходы (Тендер: {tender.product_name})",
-            date=datetime.utcnow(),
-            ref_tender_id=tender.id,
-            is_tax=False
-        )
-        db.add(cost_tx)
+@app.delete("/api/companies/{company_id}/tenders/{tender_id}")
+def delete_tender(company_id: int, tender_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
+    m = db.query(CompanyMember).filter(CompanyMember.company_id == company_id, CompanyMember.user_id == user.id).first()
+    if not m or m.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can delete tenders")
         
-    if tender.status == 'paid':
-        income_tx = Transaction(
-            company_id=tender.company_id,
-            type='income',
-            amount=tender.sell_total,
-            description=f"Оплата по тендеру: {tender.product_name}",
-            date=datetime.utcnow(),
-            ref_tender_id=tender.id,
-            is_tax=False
-        )
-        db.add(income_tx)
-        
-    db.commit()
+    t = db.query(Tender).filter(Tender.id == tender_id, Tender.company_id == company_id).first()
+    if t:
+        # Delete associated transactions
+        db.query(Transaction).filter(Transaction.ref_tender_id == tender_id).delete()
+        db.delete(t)
+        db.commit()
+    return {"status": "ok"}
 
 class TransactionCreate(BaseModel):
     type: str

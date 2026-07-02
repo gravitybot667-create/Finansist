@@ -78,6 +78,7 @@ class Tender(Base):
     status = Column(String, default="draft")
     sign_date = Column(String, nullable=True)
     expenses_detail = Column(JSON, nullable=True)
+    deliveries = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Transaction(Base):
