@@ -222,17 +222,18 @@ function App() {
     return <CreateCompanyScreen 
       onCancel={company ? () => setShowAddCompany(false) : undefined}
       onCreated={(c) => {
-        setAppState({
+        setAppState(prev => ({
+          ...prev,
           activeCompanyId: c.id,
           companies: {
+            ...(prev.companies || {}),
             [c.id]: {
               id: c.id, name: c.name, role: c.role, taxType: c.tax_type, monthlyGoal: c.monthly_goal,
               requisites: { bin: '', bank: '', iik: '', bik: '', address: '' },
               tenders: [], treasuryTransactions: [], reminders: []
             }
           }
-        });
-        });
+        }));
         setShowAddCompany(false);
       }} 
     />;
