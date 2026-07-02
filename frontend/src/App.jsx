@@ -154,17 +154,7 @@ function App() {
       };
 
       const dbTender = await api.createTender(company.id, payload);
-      
-      let updatedTx = [...company.treasuryTransactions];
-      if (['won', 'shipping'].includes(dbTender.status)) {
-        const txRes = await api.createTransaction(company.id, {
-          type: 'expense',
-          amount: dbTender.total_costs || payload.total_costs,
-          description: `Закуп и расходы (Тендер: ${dbTender.product_name || payload.product_name})`,
-          ref_tender_id: dbTender.id
-        });
-        updatedTx.unshift(txRes);
-      }
+      const updatedTx = await api.fetchTransactions(company.id);
       
       const t = mapTender(dbTender);
       updateCompany({ tenders: [t, ...company.tenders], treasuryTransactions: updatedTx });
@@ -179,31 +169,7 @@ function App() {
     if (!tender || tender.status === newStatus) return;
 
     await api.updateTenderStatus(company.id, tenderId, newStatus);
-    
-    let updatedTx = [...company.treasuryTransactions];
-    const wasActive = ['won', 'shipping'].includes(tender.status);
-    const isNowActive = ['won', 'shipping'].includes(newStatus);
-    
-    if (!wasActive && isNowActive) {
-      const txRes = await api.createTransaction(company.id, {
-        type: 'expense',
-        amount: tender.totalCosts || tender.total_costs,
-        description: `Закуп и расходы (Тендер: ${tender.productName || tender.product_name})`,
-        ref_tender_id: tenderId
-      });
-      updatedTx.unshift(txRes);
-    }
-    
-    if (newStatus === 'paid') {
-      const txRes = await api.createTransaction(company.id, {
-        type: 'income',
-        amount: tender.sellTotal || tender.sell_total,
-        description: `Оплата по тендеру: ${tender.productName || tender.product_name}`,
-        ref_tender_id: tenderId
-      });
-      updatedTx.unshift(txRes);
-    }
-
+    const updatedTx = await api.fetchTransactions(company.id);
     const updatedTenders = company.tenders.map(t => t.id === tenderId ? { ...t, status: newStatus } : t);
     updateCompany({ tenders: updatedTenders, treasuryTransactions: updatedTx });
   };
