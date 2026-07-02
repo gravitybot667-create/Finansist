@@ -684,6 +684,34 @@ const CRMScreen = ({ company, updateCompany, companyName }) => {
             </div>
           )}
           <div className="result-row"><span>Сумма налога:</span><span>{formatKZT(selectedItem.taxAmount)}</span></div>
+          {company.role === 'owner' && selectedItem.taxAmount > 0 && (
+            <div style={{ textAlign: 'right', marginTop: '4px', marginBottom: '8px' }}>
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '4px 10px', fontSize: '11px', color: 'var(--danger-color)', borderColor: 'var(--danger-color)' }}
+                onClick={async () => {
+                  if (!window.confirm(`Списать налог ${formatKZT(selectedItem.taxAmount)} с кассы?`)) return;
+                  try {
+                    await api.createTransaction(company.id, {
+                      type: 'expense',
+                      amount: selectedItem.taxAmount,
+                      description: `Налог (Тендер: ${selectedItem.productName || 'Без названия'})`,
+                      category: 'Налоги',
+                      ref_tender_id: selectedItem.id,
+                      is_tax: true
+                    });
+                    const updatedTx = await api.fetchTransactions(company.id);
+                    updateCompany({ treasuryTransactions: updatedTx });
+                    alert("Налог успешно списан с кассы!");
+                  } catch (e) {
+                    alert("Ошибка: " + e.message);
+                  }
+                }}
+              >
+                Списать налог с кассы
+              </button>
+            </div>
+          )}
           <div className="result-row" style={{ marginTop: '10px', fontWeight: 'bold' }}><span>Полная себестоимость (Закуп + Допы + Налог):</span><span>{formatKZT(selectedItem.totalCosts + selectedItem.taxAmount)}</span></div>
           <div className="result-row" style={{ color: 'var(--text-secondary)' }}><span>Себестоимость 1 единицы:</span><span>{selectedItem.buyQty > 0 ? formatKZT((selectedItem.totalCosts + selectedItem.taxAmount) / selectedItem.buyQty) : '0 ₸'}</span></div>
           
