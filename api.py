@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from dotenv import load_dotenv
 from urllib.parse import parse_qsl
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher
 from handlers import router
@@ -243,6 +244,9 @@ def create_tender(company_id: int, tender: TenderCreate, user: User = Depends(ge
     db.add(db_tender)
     db.commit()
     db.refresh(db_tender)
+    
+    sync_tender_transactions(db, db_tender)
+    
     return db_tender
 
 @app.get("/api/companies/{company_id}/tenders")
@@ -255,7 +259,38 @@ def update_tender(company_id: int, tender_id: int, status: str, user: User = Dep
     if t:
         t.status = status
         db.commit()
+        sync_tender_transactions(db, t)
     return t
+
+def sync_tender_transactions(db, tender):
+    db.query(Transaction).filter(Transaction.ref_tender_id == tender.id).delete()
+    db.commit()
+
+    if tender.status in ['won', 'shipping', 'paid']:
+        cost_tx = Transaction(
+            company_id=tender.company_id,
+            type='expense',
+            amount=tender.total_costs,
+            description=f"Закуп и расходы (Тендер: {tender.product_name})",
+            date=datetime.utcnow(),
+            ref_tender_id=tender.id,
+            is_tax=False
+        )
+        db.add(cost_tx)
+        
+    if tender.status == 'paid':
+        income_tx = Transaction(
+            company_id=tender.company_id,
+            type='income',
+            amount=tender.sell_total,
+            description=f"Оплата по тендеру: {tender.product_name}",
+            date=datetime.utcnow(),
+            ref_tender_id=tender.id,
+            is_tax=False
+        )
+        db.add(income_tx)
+        
+    db.commit()
 
 class TransactionCreate(BaseModel):
     type: str
