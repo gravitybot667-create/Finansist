@@ -829,13 +829,22 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const handleTransaction = () => {
+  const handleTransaction = async () => {
     if (!amount || !comment) return alert("Введите сумму и комментарий");
     const val = parseFloat(amount);
     if (val <= 0) return alert("Сумма должна быть больше 0");
-    const newTx = { id: Date.now(), date: new Date().toISOString(), type: formMode === 'deposit' ? 'income' : 'expense', amount: val, description: formMode === 'deposit' ? `Внесение: ${comment}` : `Снятие: ${comment}` };
-    updateCompany({ treasuryTransactions: [newTx, ...company.treasuryTransactions] });
-    setAmount(''); setComment(''); setFormMode(null);
+    try {
+      const txData = {
+        type: formMode === 'deposit' ? 'income' : 'expense',
+        amount: val,
+        description: formMode === 'deposit' ? `Внесение: ${comment}` : `Снятие: ${comment}`
+      };
+      const newTx = await api.createTransaction(company.id, txData);
+      updateCompany({ treasuryTransactions: [newTx, ...company.treasuryTransactions] });
+      setAmount(''); setComment(''); setFormMode(null);
+    } catch (e) {
+      alert("Ошибка при сохранении операции: " + e.message);
+    }
   };
 
   return (
