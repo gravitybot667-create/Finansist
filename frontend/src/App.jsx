@@ -647,6 +647,11 @@ const CRMScreen = ({ company, updateCompany, companyName }) => {
   };
 
   if (selectedItem) {
+    const tenderTransactions = company.treasuryTransactions.filter(tx => tx.ref_tender_id === selectedItem.id);
+    const isTaxPaid = tenderTransactions.some(tx => tx.is_tax);
+    const totalIncome = tenderTransactions.filter(tx => tx.type === 'income').reduce((acc, tx) => acc + tx.amount, 0);
+    const totalExpense = tenderTransactions.filter(tx => tx.type === 'expense' && !tx.is_tax).reduce((acc, tx) => acc + tx.amount, 0);
+
     return (
       <div className="animate-fade-in" style={{ padding: '0 4px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -668,9 +673,22 @@ const CRMScreen = ({ company, updateCompany, companyName }) => {
             </select>
           </div>
           <div className="result-row"><span>Цена за единицу (доход):</span><span>{formatKZT(selectedItem.sellPrice)} x {selectedItem.sellQty} шт</span></div>
-          <div className="result-row"><span>Общая выручка:</span><span>{formatKZT(selectedItem.sellTotal)}</span></div>
+          <div className="result-row">
+            <span>Общая выручка:</span>
+            <div style={{ textAlign: 'right' }}>
+              <div>{formatKZT(selectedItem.sellTotal)}</div>
+              <div style={{ fontSize: '11px', color: totalIncome >= selectedItem.sellTotal ? 'var(--success-color)' : 'var(--text-secondary)' }}>Получено: {formatKZT(totalIncome)}</div>
+            </div>
+          </div>
+          
           <div className="result-row" style={{ marginTop: '10px' }}><span>Цена закупа за единицу:</span><span>{formatKZT(selectedItem.buyPrice)} x {selectedItem.buyQty} шт</span></div>
-          <div className="result-row"><span>Общая сумма закупа:</span><span>{formatKZT(selectedItem.buyTotal)}</span></div>
+          <div className="result-row">
+            <span>Общая сумма закупа:</span>
+            <div style={{ textAlign: 'right' }}>
+              <div>{formatKZT(selectedItem.buyTotal)}</div>
+              <div style={{ fontSize: '11px', color: totalExpense >= selectedItem.buyTotal ? 'var(--success-color)' : 'var(--text-secondary)' }}>Оплачено: {formatKZT(totalExpense)}</div>
+            </div>
+          </div>
           
           <div className="result-row" style={{ marginTop: '10px' }}><span>Сумма доп. расходов:</span><span>{formatKZT(selectedItem.totalExtra)}</span></div>
           {selectedItem.expenses && selectedItem.expenses.length > 0 && (
@@ -683,8 +701,14 @@ const CRMScreen = ({ company, updateCompany, companyName }) => {
               ))}
             </div>
           )}
-          <div className="result-row"><span>Сумма налога:</span><span>{formatKZT(selectedItem.taxAmount)}</span></div>
-          {company.role === 'owner' && selectedItem.taxAmount > 0 && (
+          <div className="result-row">
+            <span>Сумма налога:</span>
+            <div style={{ textAlign: 'right' }}>
+              <div>{formatKZT(selectedItem.taxAmount)}</div>
+              {isTaxPaid && <div style={{ fontSize: '11px', color: 'var(--success-color)' }}>Оплачен</div>}
+            </div>
+          </div>
+          {company.role === 'owner' && selectedItem.taxAmount > 0 && !isTaxPaid && (
             <div style={{ textAlign: 'right', marginTop: '4px', marginBottom: '8px' }}>
               <button 
                 className="btn-secondary" 
@@ -960,23 +984,46 @@ const AnalyticsScreen = ({ company, balance, updateCompany }) => {
 // 4. TREASURY SCREEN
 // ========================
 const TreasuryScreen = ({ company, balance, updateCompany }) => {
-  const [formMode, setFormMode] = useState(null);
+  const [formMode, setFormMode] = useState(null); // 'deposit', 'withdraw_company', 'withdraw_personal', 'withdraw_select'
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
   
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleTransaction = async () => {
-    if (!amount || !comment) return alert("Введите сумму и комментарий");
+    if (!amount) return alert("Введите сумму");
+    if (formMode === 'withdraw_personal' && !comment.trim()) return alert("Комментарий обязателен при выводе на личные нужды!");
+    if (!comment.trim()) return alert("Пожалуйста, введите комментарий");
+    
     const val = parseFloat(amount);
     if (val <= 0) return alert("Сумма должна быть больше 0");
     try {
+      let type = 'expense';
+      let category = null;
+      let descPrefix = '';
+      
+      if (formMode === 'deposit') {
+        type = 'income';
+        descPrefix = 'Внесение: ';
+      } else if (formMode === 'withdraw_company') {
+        type = 'expense';
+        category = 'expense_company';
+        descPrefix = 'Расход на компанию: ';
+      } else if (formMode === 'withdraw_personal') {
+        type = 'expense';
+        category = 'withdrawal_personal';
+        descPrefix = 'Личные нужды (доля): ';
+      }
+
       const txData = {
-        type: formMode === 'deposit' ? 'income' : 'expense',
+        type,
         amount: val,
-        description: formMode === 'deposit' ? `Внесение: ${comment}` : `Снятие: ${comment}`
+        description: `${descPrefix}${comment}`,
+        category
       };
+      
       const newTx = await api.createTransaction(company.id, txData);
       updateCompany({ treasuryTransactions: [newTx, ...company.treasuryTransactions] });
       setAmount(''); setComment(''); setFormMode(null);
@@ -985,8 +1032,31 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
     }
   };
 
+  const getTenderInfo = (tx) => {
+    if (!tx.ref_tender_id) return null;
+    return company.tenders.find(t => t.id === tx.ref_tender_id);
+  };
+
+  const filteredTransactions = company.treasuryTransactions.filter(tx => {
+    if (startDate && new Date(tx.date) < new Date(startDate)) return false;
+    if (endDate && new Date(tx.date) > new Date(endDate + 'T23:59:59')) return false;
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const descMatch = (tx.description || '').toLowerCase().includes(query);
+      const authorMatch = (tx.author_name || '').toLowerCase().includes(query);
+      const tender = getTenderInfo(tx);
+      let tenderMatch = false;
+      if (tender) {
+        tenderMatch = (tender.productName || '').toLowerCase().includes(query) || (tender.lotNumber || '').toLowerCase().includes(query);
+      }
+      if (!descMatch && !authorMatch && !tenderMatch) return false;
+    }
+    return true;
+  });
+
   return (
-    <div className="animate-fade-in" style={{ padding: '0 4px' }}>
+    <div className="animate-fade-in" style={{ padding: '0 4px', paddingBottom: '40px' }}>
       <h2 style={{ marginBottom: '20px', fontSize: '20px' }}>Моя Касса</h2>
       <div className="balance-card">
         <div style={{ fontSize: '14px', opacity: 0.8 }}>Текущий баланс</div>
@@ -996,14 +1066,27 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
         !formMode ? (
           <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
             <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--success-color)', color: 'var(--success-color)' }} onClick={() => setFormMode('deposit')}>Внести</button>
-            <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw')}>Изъять</button>
+            <button className="btn-secondary" style={{ flex: 1, borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw_select')}>Изъять</button>
+          </div>
+        ) : formMode === 'withdraw_select' ? (
+          <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>Тип изъятия</h3>
+            <button className="btn-secondary" style={{ width: '100%', marginBottom: '10px', borderColor: 'var(--warning-color)', color: 'var(--warning-color)' }} onClick={() => setFormMode('withdraw_company')}>Затраты на компанию / Форс-мажор</button>
+            <button className="btn-secondary" style={{ width: '100%', marginBottom: '16px', borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw_personal')}>Личные нужды (Доля)</button>
+            <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setFormMode(null)}>Отмена</button>
           </div>
         ) : (
           <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
-            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>{formMode === 'deposit' ? 'Внесение в кассу' : 'Снятие из кассы'}</h3>
-            <input type="number" className="input-field" placeholder="Сумма" style={{ marginBottom: '10px' }} value={amount} onChange={e => setAmount(e.target.value)} />
-            <input type="text" className="input-field" placeholder="Комментарий" style={{ marginBottom: '16px' }} value={comment} onChange={e => setComment(e.target.value)} />
-            <div style={{ display: 'flex', gap: '10px' }}><button className="btn-secondary" style={{ flex: 1 }} onClick={() => setFormMode(null)}>Отмена</button><button className="btn-primary" style={{ flex: 1, background: formMode === 'deposit' ? 'var(--success-color)' : 'var(--danger-color)' }} onClick={handleTransaction}>{formMode === 'deposit' ? 'Внести' : 'Снять'}</button></div>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>
+              {formMode === 'deposit' ? 'Внесение в кассу' : 
+               formMode === 'withdraw_company' ? 'Затраты на компанию' : 'Снятие на личные нужды'}
+            </h3>
+            <input type="number" className="input-field" placeholder="Сумма" style={{ marginBottom: '10px', width: '100%', boxSizing: 'border-box' }} value={amount} onChange={e => setAmount(e.target.value)} />
+            <input type="text" className="input-field" placeholder={formMode === 'withdraw_personal' ? 'Комментарий (Обязательно)*' : 'Комментарий (Обязательно)*'} style={{ marginBottom: '16px', width: '100%', boxSizing: 'border-box' }} value={comment} onChange={e => setComment(e.target.value)} />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setFormMode(null)}>Отмена</button>
+              <button className="btn-primary" style={{ flex: 1, background: formMode === 'deposit' ? 'var(--success-color)' : 'var(--danger-color)' }} onClick={handleTransaction}>{formMode === 'deposit' ? 'Внести' : 'Снять'}</button>
+            </div>
           </div>
         )
       )}
@@ -1011,52 +1094,52 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h3 style={{ fontSize: '16px', margin: 0 }}>История операций</h3>
       </div>
+      
+      <input 
+        type="text" 
+        className="input-field" 
+        placeholder="🔍 Поиск по лоту, тендеру или описанию..." 
+        style={{ width: '100%', marginBottom: '16px', boxSizing: 'border-box' }} 
+        value={searchQuery} 
+        onChange={e => setSearchQuery(e.target.value)} 
+      />
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
         <div>
           <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Период с:</label>
-          <input 
-            type={startDate ? "date" : "text"}
-            onFocus={(e) => e.target.type = "date"}
-            onBlur={(e) => { if (!e.target.value) e.target.type = "text" }}
-            placeholder="ДД.ММ.ГГГГ"
-            className="input-field" 
-            style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} 
-            value={startDate} 
-            onChange={e => setStartDate(e.target.value)} 
-          />
+          <input type={startDate ? "date" : "text"} onFocus={(e) => e.target.type = "date"} onBlur={(e) => { if (!e.target.value) e.target.type = "text" }} placeholder="ДД.ММ.ГГГГ" className="input-field" style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
         <div>
           <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>По:</label>
-          <input 
-            type={endDate ? "date" : "text"}
-            onFocus={(e) => e.target.type = "date"}
-            onBlur={(e) => { if (!e.target.value) e.target.type = "text" }}
-            placeholder="ДД.ММ.ГГГГ"
-            className="input-field" 
-            style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} 
-            value={endDate} 
-            onChange={e => setEndDate(e.target.value)} 
-          />
+          <input type={endDate ? "date" : "text"} onFocus={(e) => e.target.type = "date"} onBlur={(e) => { if (!e.target.value) e.target.type = "text" }} placeholder="ДД.ММ.ГГГГ" className="input-field" style={{ padding: '8px', width: '100%', boxSizing: 'border-box', fontSize: '14px' }} value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
       </div>
 
       <div className="glass-panel" style={{ padding: '16px' }}>
         {company.treasuryTransactions.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>Операций нет</div> : (
-          company.treasuryTransactions.filter(tx => {
-            if (startDate && new Date(tx.date) < new Date(startDate)) return false;
-            if (endDate && new Date(tx.date) > new Date(endDate + 'T23:59:59')) return false;
-            return true;
-          }).length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>За этот период операций нет</div> :
-          company.treasuryTransactions.filter(tx => {
-            if (startDate && new Date(tx.date) < new Date(startDate)) return false;
-            if (endDate && new Date(tx.date) > new Date(endDate + 'T23:59:59')) return false;
-            return true;
-          }).map(tx => (
-            <div key={tx.id} className="treasury-transaction">
-              <div><div style={{ fontSize: '14px', marginBottom: '4px' }}>{tx.description}</div><div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{format(new Date(tx.date), 'dd.MM.yyyy HH:mm')}</div></div>
-              <div style={{ fontWeight: 600, color: tx.type === 'income' ? 'var(--success-color)' : 'var(--danger-color)' }}>{tx.type === 'income' ? '+' : '-'}{formatKZT(tx.amount)}</div>
-            </div>
-          ))
+          filteredTransactions.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>По вашему запросу операций не найдено</div> :
+          filteredTransactions.map(tx => {
+            const tender = getTenderInfo(tx);
+            return (
+              <div key={tx.id} className="treasury-transaction" style={{ paddingBottom: '10px', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', display: 'block' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, flex: 1, paddingRight: '10px' }}>{tx.description}</div>
+                  <div style={{ fontWeight: 600, color: tx.type === 'income' ? 'var(--success-color)' : 'var(--danger-color)', whiteSpace: 'nowrap' }}>{tx.type === 'income' ? '+' : '-'}{formatKZT(tx.amount)}</div>
+                </div>
+                {tender && (
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '4px', display: 'inline-block' }}>
+                    Тендер: {tender.productName || 'Без названия'} (Лот: {tender.lotNumber || '—'})
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    <span style={{ marginRight: '8px' }}>👤 {tx.author_name || 'Владелец'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{format(new Date(tx.date), 'dd.MM.yyyy HH:mm')}</div>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
