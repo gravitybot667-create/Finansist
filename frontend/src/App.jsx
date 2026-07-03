@@ -1020,6 +1020,9 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Pagination state
+  const [displayLimit, setDisplayLimit] = useState(5);
 
   const handleTransaction = async () => {
     if (!amount) return alert("Введите сумму");
@@ -1147,28 +1150,39 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
       <div className="glass-panel" style={{ padding: '16px' }}>
         {company.treasuryTransactions.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>Операций нет</div> : (
           filteredTransactions.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>По вашему запросу операций не найдено</div> :
-          filteredTransactions.map(tx => {
-            const tender = getTenderInfo(tx);
-            return (
-              <div key={tx.id} className="treasury-transaction" style={{ paddingBottom: '10px', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', display: 'block' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                  <div style={{ fontSize: '14px', fontWeight: 500, flex: 1, paddingRight: '10px' }}>{tx.description}</div>
-                  <div style={{ fontWeight: 600, color: tx.type === 'income' ? 'var(--success-color)' : 'var(--danger-color)', whiteSpace: 'nowrap' }}>{tx.type === 'income' ? '+' : '-'}{formatKZT(tx.amount)}</div>
-                </div>
-                {tender && (
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '4px', display: 'inline-block' }}>
-                    Тендер: {tender.productName || 'Без названия'} (Лот: {tender.lotNumber || '—'})
+          <>
+            {filteredTransactions.slice(0, displayLimit).map(tx => {
+              const tender = getTenderInfo(tx);
+              return (
+                <div key={tx.id} className="treasury-transaction" style={{ paddingBottom: '10px', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', display: 'block' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 500, flex: 1, paddingRight: '10px' }}>{tx.description}</div>
+                    <div style={{ fontWeight: 600, color: tx.type === 'income' ? 'var(--success-color)' : 'var(--danger-color)', whiteSpace: 'nowrap' }}>{tx.type === 'income' ? '+' : '-'}{formatKZT(tx.amount)}</div>
                   </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    <span style={{ marginRight: '8px' }}>👤 {tx.author_name || 'Владелец'}</span>
+                  {tender && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '4px', display: 'inline-block' }}>
+                      Тендер: {tender.productName || 'Без названия'} (Лот: {tender.lotNumber || '—'})
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      <span style={{ marginRight: '8px' }}>👤 {tx.author_name || 'Владелец'}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{format(new Date(tx.date), 'dd.MM.yyyy HH:mm')}</div>
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{format(new Date(tx.date), 'dd.MM.yyyy HH:mm')}</div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+            {filteredTransactions.length > displayLimit && (
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', marginTop: '16px' }} 
+                onClick={() => setDisplayLimit(prev => prev + 10)}
+              >
+                Показать ещё...
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
