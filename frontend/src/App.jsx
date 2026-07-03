@@ -391,9 +391,38 @@ const SettingsModal = ({ company, updateCompany, onClose, companyName }) => {
           {!inviteLink ? (
             <button className="btn-secondary" style={{ width: '100%' }} onClick={handleGenerateLink}>Пригласить сотрудника</button>
           ) : (
-            <div style={{ padding: '10px', background: 'var(--bg-primary)', borderRadius: '8px', wordBreak: 'break-all', fontSize: '12px' }}>
-              Ссылка для приглашения:<br/>
-              <a href={inviteLink} style={{ color: 'var(--primary-color)' }}>{inviteLink}</a>
+            <div 
+              style={{ padding: '10px', background: 'var(--bg-primary)', borderRadius: '8px', wordBreak: 'break-all', fontSize: '12px', cursor: 'pointer', border: '1px dashed var(--primary-color)' }}
+              onClick={() => {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(inviteLink).then(() => {
+                    const tg = window.Telegram?.WebApp;
+                    if (tg && tg.showAlert) {
+                      tg.showAlert("Ссылка скопирована!");
+                    } else {
+                      alert("Ссылка скопирована!");
+                    }
+                  });
+                } else {
+                  // Fallback for older iOS versions
+                  const textArea = document.createElement("textarea");
+                  textArea.value = inviteLink;
+                  textArea.style.position = "fixed";
+                  document.body.appendChild(textArea);
+                  textArea.focus();
+                  textArea.select();
+                  try {
+                    document.execCommand('copy');
+                    const tg = window.Telegram?.WebApp;
+                    if (tg && tg.showAlert) tg.showAlert("Ссылка скопирована!");
+                    else alert("Ссылка скопирована!");
+                  } catch (err) {}
+                  document.body.removeChild(textArea);
+                }
+              }}
+            >
+              <div style={{ marginBottom: '4px', color: 'var(--text-secondary)' }}>Нажмите, чтобы скопировать ссылку:</div>
+              <div style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{inviteLink}</div>
             </div>
           )}
         </div>
