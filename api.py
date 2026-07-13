@@ -329,6 +329,8 @@ def update_tender(company_id: int, tender_id: int, data: TenderUpdate = Body(Non
                 t.status = data.status
             if data.deliveries is not None:
                 t.deliveries = data.deliveries
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(t, "deliveries")
         db.commit()
         db.refresh(t)
     return t
