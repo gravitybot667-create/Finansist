@@ -1013,7 +1013,7 @@ const AnalyticsScreen = ({ company, balance, updateCompany }) => {
 // 4. TREASURY SCREEN
 // ========================
 const TreasuryScreen = ({ company, balance, updateCompany }) => {
-  const [formMode, setFormMode] = useState(null); // 'deposit', 'withdraw_company', 'withdraw_personal', 'withdraw_select'
+  const [formMode, setFormMode] = useState(null); // 'deposit', 'withdraw_company', 'withdraw_personal', 'withdraw_select', 'withdraw_salary'
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
   
@@ -1021,13 +1021,32 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
   const [endDate, setEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [members, setMembers] = useState([]);
+  const [selectedMember, setSelectedMember] = useState('');
+  
   // Pagination state
   const [displayLimit, setDisplayLimit] = useState(5);
+
+  useEffect(() => {
+    const loadMembers = async () => {
+      try {
+        const data = await api.getCompanyMembers(company.id);
+        setMembers(data);
+        if (data.length > 0) setSelectedMember(data[0].id);
+      } catch (e) {
+        console.error("Failed to load members for treasury", e);
+      }
+    };
+    if (formMode === 'withdraw_salary' && members.length === 0) {
+      loadMembers();
+    }
+  }, [formMode, company.id, members.length]);
 
   const handleTransaction = async () => {
     if (!amount) return alert("Введите сумму");
     if (formMode === 'withdraw_personal' && !comment.trim()) return alert("Комментарий обязателен при выводе на личные нужды!");
     if (!comment.trim()) return alert("Пожалуйста, введите комментарий");
+    if (formMode === 'withdraw_salary' && !selectedMember) return alert("Выберите сотрудника для выдачи зарплаты!");
     
     const val = parseFloat(amount);
     if (val <= 0) return alert("Сумма должна быть больше 0");
@@ -1047,6 +1066,12 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
         type = 'expense';
         category = 'withdrawal_personal';
         descPrefix = 'Личные нужды (доля): ';
+      } else if (formMode === 'withdraw_salary') {
+        type = 'expense';
+        category = 'salary';
+        const member = members.find(m => m.id == selectedMember);
+        const memberName = member ? (member.first_name || member.username || 'Сотрудник') : 'Сотрудник';
+        descPrefix = `Зарплата (${memberName}): `;
       }
 
       const txData = {
@@ -1104,6 +1129,7 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
           <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
             <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>Тип изъятия</h3>
             <button className="btn-secondary" style={{ width: '100%', marginBottom: '10px', borderColor: 'var(--warning-color)', color: 'var(--warning-color)' }} onClick={() => setFormMode('withdraw_company')}>Затраты на компанию / Форс-мажор</button>
+            <button className="btn-secondary" style={{ width: '100%', marginBottom: '10px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }} onClick={() => setFormMode('withdraw_salary')}>Выдача зарплаты</button>
             <button className="btn-secondary" style={{ width: '100%', marginBottom: '16px', borderColor: 'var(--danger-color)', color: 'var(--danger-color)' }} onClick={() => setFormMode('withdraw_personal')}>Личные нужды (Доля)</button>
             <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setFormMode(null)}>Отмена</button>
           </div>
@@ -1111,8 +1137,22 @@ const TreasuryScreen = ({ company, balance, updateCompany }) => {
           <div className="glass-panel animate-fade-in" style={{ marginBottom: '24px', padding: '16px' }}>
             <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>
               {formMode === 'deposit' ? 'Внесение в кассу' : 
-               formMode === 'withdraw_company' ? 'Затраты на компанию' : 'Снятие на личные нужды'}
+               formMode === 'withdraw_company' ? 'Затраты на компанию' :
+               formMode === 'withdraw_salary' ? 'Выдача зарплаты' : 'Снятие на личные нужды'}
             </h3>
+            {formMode === 'withdraw_salary' && (
+              <select 
+                className="input-field" 
+                style={{ marginBottom: '10px', width: '100%', boxSizing: 'border-box' }}
+                value={selectedMember}
+                onChange={e => setSelectedMember(e.target.value)}
+              >
+                {members.length === 0 ? <option value="">Загрузка сотрудников...</option> : null}
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>{m.first_name || m.username || `Пользователь #${m.id}`}</option>
+                ))}
+              </select>
+            )}
             <input type="number" className="input-field" placeholder="Сумма" style={{ marginBottom: '10px', width: '100%', boxSizing: 'border-box' }} value={amount} onChange={e => setAmount(e.target.value)} />
             <input type="text" className="input-field" placeholder={formMode === 'withdraw_personal' ? 'Комментарий (Обязательно)*' : 'Комментарий (Обязательно)*'} style={{ marginBottom: '16px', width: '100%', boxSizing: 'border-box' }} value={comment} onChange={e => setComment(e.target.value)} />
             <div style={{ display: 'flex', gap: '10px' }}>
